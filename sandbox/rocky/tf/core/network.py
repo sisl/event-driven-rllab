@@ -271,6 +271,10 @@ class GRUNetwork(object):
     def step_prev_state_layer(self):
         return self._l_step_prev_state
 
+    @property # Edit by Kunal Menda. This seems to be right?
+    def step_prev_hidden_layer(self):
+        return self._l_step_prev_state
+
     @property
     def step_hidden_layer(self):
         return self._l_step_hidden

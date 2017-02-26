@@ -41,3 +41,7 @@ class ProxyEnv(Env):
 
     def set_param_values(self,params):
         self._wrapped_env.set_param_values(params)
+
+    @property
+    def agents(self):
+        return self._wrapped_env.agents

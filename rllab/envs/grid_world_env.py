@@ -1,5 +1,5 @@
 import numpy as np
-from .base import Env
+from rllab.envs.base import Env
 from rllab.spaces import Discrete
 from rllab.envs.base import Step
 from rllab.core.serializable import Serializable
@@ -147,4 +147,59 @@ class GridWorldEnv(Env, Serializable):
     @property
     def observation_space(self):
         return Discrete(self.n_row * self.n_col)
+
+
+if __name__ == "__main__":
+
+    env = GridWorldEnv()
+
+
+    from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
+    from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
+    from sandbox.rocky.tf.core.network import MLP
+    from sandbox.rocky.tf.envs.base import TfEnv
+    from sandbox.rocky.tf.algos.trpo import TRPO
+    from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
+                                                                      FiniteDifferenceHvp)
+    import tensorflow as tf
+    env = TfEnv(env)
+
+    # from rllab.policies.categorical_gru_policy import CategoricalGRUPolicy
+    # from rllab.policies.categorical_mlp_policy import CategoricalMLPPolicy
+    # from rllab.core.network import MLP
+    # from rllab.algos.trpo import TRPO
+    # from rllab.envs.normalized_env import normalize
+    # env = normalize(env)
+
+
+    from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
+    
+
+
+    feature_network = MLP(name='feature_net', input_shape=(
+                    env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
+                                        output_dim=7,
+                                        hidden_nonlinearity=tf.nn.tanh,
+                                        hidden_sizes=(32, 32), output_nonlinearity=None)
+    # feature_network = None
+
+    # policy = CategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
+    # policy = CategoricalGRUPolicy(env_spec=env.spec)
+    policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
+
+    baseline = LinearFeatureBaseline(env_spec=env.spec)
+    algo = TRPO(
+        env=env,
+        policy=policy,
+        baseline=baseline,
+        batch_size=4000,
+        whole_paths=True,
+        max_path_length=100,
+        n_itr=40,
+        discount=0.99,
+        step_size=0.1,
+        optimizer=ConjugateGradientOptimizer(
+                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5))
+    )
+    algo.train()
 

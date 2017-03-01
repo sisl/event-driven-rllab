@@ -4,8 +4,7 @@ import sys
 
 import numpy as np
 #from gym import spaces
-from rllab.spaces.box import Box
-from rllab.spaces.discrete import Discrete
+from rllab.spaces import Box, Discrete
 # from sandbox.rocky.tf.spaces import Box, Discrete
 
 
@@ -74,7 +73,8 @@ class SingleAgentEDDrivingEnv(AbstractMAEnv, EzPickle):
 		# current_state = [fuel,position,velocity,last_action]
 		self.current_state = [2000.0, 0.0, 52.0, 3]
 		# Call this with initial actions
-		return self.step([3]*self.n_agents)[0]
+		return self.step(np.array([3]))[0]
+		#return self.step(3)[0]
 
 	def step(self, actions):
 
@@ -88,15 +88,21 @@ class SingleAgentEDDrivingEnv(AbstractMAEnv, EzPickle):
 		#   The action returned by the (decentralized) policy will look like
 		#                                      [  None ,  None ,  a3_t ,  None ,  a5_t   ]
 
+
 		current_state = self.current_state
 		# pdb.set_trace()
 		if(not isinstance( actions, list )):
 			actions = [actions]
-		next_state, next_obs, next_reward, done = self.transition_event(current_state,actions[0])
+
+		next_state, next_obs, next_reward, done = self.transition_event(current_state,actions[0][0])
 
 		self.current_state = next_state
 
-		return [next_obs], [next_reward], done, {}
+		obs = [next_obs]
+		rewards = [next_reward]
+
+		return obs, rewards, done, {'fuel': self.current_state[0], 'done': done }
+
 
 	def get_reward(self,current_state,next_state):
 
@@ -182,7 +188,6 @@ class SingleAgentEDDrivingEnv(AbstractMAEnv, EzPickle):
 		done = fuel < 0.0
 		
 		return next_state, next_obs, next_reward, done
-		# return (next_state, self.get_obs(next_state) + [delta_t,r])
 
 	@property
 	def spec(self):
@@ -219,68 +224,53 @@ class SingleAgentEDDrivingEnv(AbstractMAEnv, EzPickle):
 		self.np_random, seed_ = seeding.np_random(seed)
 		return [seed_]
 
+	def terminate(self):
+		return
+
 
 
 if __name__ == "__main__":
-
+	
+	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
 	from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
+	from sandbox.rocky.tf.core.network import MLP
 	from sandbox.rocky.tf.envs.base import TfEnv
 	from sandbox.rocky.tf.algos.trpo import TRPO
 	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
+	from EDFirestorm.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
+	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
+                                                                      FiniteDifferenceHvp)
+	import tensorflow as tf
+
+	import rllab.misc.logger as logger
 
 	env = SingleAgentEDDrivingEnv()
 	env = TfEnv(env)
 
-	policy = CategoricalGRUPolicy(env_spec=env.spec, name = "policy")
+	# logger.add_tabular_output('./ED_driving_GRU.log')
+
+	feature_network = MLP(name='feature_net', input_shape=(
+					env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
+										output_dim=7,
+										hidden_nonlinearity=tf.nn.tanh,
+										hidden_sizes=(32, 32), output_nonlinearity=None)
+	feature_network = None
+
+	policy = GSMDPCategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
+	# policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
 	baseline = LinearFeatureBaseline(env_spec=env.spec)
 	algo = TRPO(
 		env=env,
 		policy=policy,
 		baseline=baseline,
-		discount=0.99999,
-		n_itr=75
+		discount=0.,
+		n_itr=75,
+		optimizer=ConjugateGradientOptimizer(
+                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
+		sampler_cls = GSMDPBatchSampler
 	)
 
 	algo.train()
-
-	pdb.set_trace()
-
-
-
-
-
-	from rllab.sampler.utils import ed_dec_rollout
-	from rllab.policies.categorical_mlp_policy import CategoricalMLPPolicy
-
-	from rllab.algos.trpo import TRPO
-	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
-	from rllab.envs.normalized_env import normalize
-
-
-
-
-	env = SingleAgentEDDrivingEnv()
-
-	#agent = CategoricalMLPPolicy(env.spec)
-
-	policy = CategoricalMLPPolicy(
-	    env_spec=env.spec
-	)
-
-	baseline = LinearFeatureBaseline(env_spec=env.spec)
-	algo = TRPO(
-		env=env,
-		policy=policy,
-		baseline=baseline,
-		discount=0.99999,
-		n_itr=75
-	)
-
-	algo.train()
-	# output = ed_dec_rollout(env,agent)
-
-	pdb.set_trace()
-
 
 	
 

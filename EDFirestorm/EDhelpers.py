@@ -59,15 +59,6 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			agent_info_list = [ainfo for i, ainfo in enumerate(agent_info_list) if i in agents_to_act]
 
 
-		# turn agent_infos into a list if it isnt one
-		# if(not isinstance(agent_info_list, list)):
-		# 	tmp = [dict()]*n_agents
-		# 	for i in range(n_agents):
-		# 		for key, val in enumerate(agent_info_list):
-		# 			tmp[i][key] = val[i,:]
-		# 	agent_info_list = tmp
-
-
 
 		next_actions = [None]*n_agents # will fill in in the loop
 
@@ -87,12 +78,16 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 
 		# take next actions
 		next_olist, rlist, d, env_info = env.step(np.asarray(next_actions))
+
+		# update sojourn time (we should associate ts from next_olist to r, not current)
 		
 		for i, r in enumerate(rlist):
 			if r is None: continue
 			# skip reward if agent has not acted yet
 			if( len(observations[i]) > 0 ):
 				rewards[i].append(r)
+				# pdb.set_trace()
+				observations[i][0][-1] = env.observation_space.flatten(next_olist[i])[-1]
 				env_infos[i].append(env_info)
 		path_length += 1
 		if d:
@@ -111,7 +106,6 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	rewards = [ r for r in rewards if len(r) > 0]
 	agent_infos = [i for i in agent_infos if len(i) > 0]
 	env_infos = [e for e in env_infos if len(e) > 0]
-
 
 	return [
 		dict(
@@ -214,12 +208,12 @@ class GSMDPSampler(Sampler):
 			path_baselines = np.append(all_path_baselines[idx], 0)
 			if(len(path["rewards"]) != len(t_sojourn)):
 				pdb.set_trace()
-			deltas = path["rewards"] + \
+			deltas = discount_gamma * path["rewards"] + \
 					 discount_gamma * path_baselines[1:] - \
 					 path_baselines[:-1]
 			path["advantages"] = variable_discount_cumsum(
 				deltas, discount_gamma_lambda)
-			path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
+			path["returns"] = variable_discount_cumsum(path["rewards"]*discount_gamma, discount_gamma)
 			baselines.append(path_baselines[:-1])
 			returns.append(path["returns"])
 

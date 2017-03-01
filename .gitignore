@@ -37,3 +37,7 @@ blackbox
 rllab/config_personal.py
 *.swp
 sandbox
+
+*.png
+
+*.mat

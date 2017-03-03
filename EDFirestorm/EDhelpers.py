@@ -97,6 +97,20 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			env.render()
 			timestep = 0.05
 			time.sleep(timestep / speedup)
+
+	if(path_length == max_path_length):
+		# probably have some paths that aren't the right length
+		for ind, o in enumerate(observations):
+			r = rewards[ind]
+			if(len(o) > len(r)):
+				assert(len(o) <= (len(r) + 1)), \
+					'len(o) %d, len(r) %d' % (len(o), len(r))
+				# delete last elem of obs, actions, agent infos
+				del observations[ind][-1]
+				del actions[ind][-1]
+				del agent_infos[ind][-1]
+
+
 	if animated:
 		env.render()
 
@@ -189,6 +203,10 @@ class GSMDPSampler(Sampler):
 		self.algo = algo
 
 	def process_samples(self, itr, paths):
+		# IMPORTANT:
+		# Rewards accrued from a_t to a_t+1 are expected to be discounted by 
+		# the environment to values at time t
+
 		#paths = list(itertools.chain.from_iterable(paths))
 
 		baselines = []
@@ -207,13 +225,14 @@ class GSMDPSampler(Sampler):
 			discount_gamma_lambda = np.exp(-gamma*lamda*t_sojourn)
 			path_baselines = np.append(all_path_baselines[idx], 0)
 			if(len(path["rewards"]) != len(t_sojourn)):
+				# TODO HANDLE INFINITE HORIZON GAMES
 				pdb.set_trace()
-			deltas = discount_gamma * path["rewards"] + \
+			deltas = path["rewards"] + \
 					 discount_gamma * path_baselines[1:] - \
 					 path_baselines[:-1]
 			path["advantages"] = variable_discount_cumsum(
 				deltas, discount_gamma_lambda)
-			path["returns"] = variable_discount_cumsum(path["rewards"]*discount_gamma, discount_gamma)
+			path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
 			baselines.append(path_baselines[:-1])
 			returns.append(path["returns"])
 

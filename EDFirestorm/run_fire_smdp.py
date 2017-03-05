@@ -6,7 +6,6 @@ import numpy as np
 #from gym import spaces
 from rllab.spaces import Box, Discrete
 # from sandbox.rocky.tf.spaces import Box, Discrete
-import simpy
 
 
 from gym.utils import colorize, seeding
@@ -24,27 +23,6 @@ from math import exp
 
 from fire_smdp import fire_extinguish
 
-
-
-## --- SIMPY FUNCTIONS
-def car_generator(env,traffic_light_list):
-	"""Generate new cars that arrive at the gas station."""
-	for i in itertools.count():
-		yield env.timeout(random.randint(*T_INTER))
-		env.process(car('Car %d' % i, env, traffic_light_list))
-
-def car(name, env, traffic_light_list):
-	for traffic_light in traffic_light_list:
-		with traffic_light.resource.request() as req:
-			yield req
-			# Take some time to get through intersection
-			env.timeout(CAR_INTERSECTION_TIME)
-		# Give a reward to the traffic light
-		current_time = env.now()
-		light_change_time = traffic_light.light_change_time
-		delta_t = current_time - light_change_time
-		self.accrued_reward += exp(-delta_t * CT_DISCOUNT_RATE) * 1.0
-		# Maybe want to send credit to previous stop lights to encourage cooperation?
 		
 
 
@@ -62,8 +40,7 @@ class UAV(Agent):
 	@property
 	def action_space(self):
 
-		return Box( np.array([-1.0, -1.0]), 
-					np.array( [1.0, 1.0] ) )
+		return Box(low=-1., high=1., shape=(2,))
 
 
 
@@ -175,6 +152,7 @@ class FirestormSMDPEnv(AbstractMAEnv, EzPickle):
 		"""
 		Log extra information per iteration based on the collected paths
 		"""
+		pdb.set_trace()
 		pass
 
 	@property

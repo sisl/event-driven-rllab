@@ -89,7 +89,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 				# pdb.set_trace()
 				observations[i][0][-1] = env.observation_space.flatten(next_olist[i])[-1]
 				env_infos[i].append(env_info)
-		path_length += 1
+		path_length = max( [len(o) for o in observations] ) 
 		if d:
 			break
 		olist = next_olist

@@ -1,6 +1,7 @@
 import copy
 import math
 import sys
+import itertools
 
 import numpy as np
 #from gym import spaces
@@ -23,52 +24,125 @@ import random
 from math import exp
 
 
-T_INTER = [2,10] # Time range for cars entering system
+T_INTER = [2,15] # Time range for cars entering system
 CAR_INTERSECTION_TIME = 1.0
+CAR_TRAVEL_TIME = 3.0
 CT_DISCOUNT_RATE = 0.01
-
+MAX_STOP_TIME = 100.
+MIN_STOP_TIME = 2.
+MAX_SIMTIME = 1000
 
 
 ## --- SIMPY FUNCTIONS
-def car_generator(env,traffic_light_list):
-	"""Generate new cars that arrive at the gas station."""
-	for i in itertools.count():
-		yield env.timeout(random.randint(*T_INTER))
-		env.process(car('Car %d' % i, env, traffic_light_list))
 
-def car(name, env, traffic_light_list):
-	for traffic_light in traffic_light_list:
-		with traffic_light.resource.request() as req:
+
+def car_generator(env,traffic_light_list, direction):
+	"""Generate new cars that arrive at the gas station."""
+	global car_counter
+	while(True):
+		yield env.timeout(random.randint(*T_INTER))
+		env.process(car('Car %d' % car_counter, env, traffic_light_list, direction))
+		car_counter+=1
+
+	env.exit()
+
+def car(name, env, traffic_light_list, direction):
+	for i, traffic_light in enumerate(traffic_light_list):
+
+		with traffic_light.queues[direction].request(priority = 1) as req:
 			yield req
 			# Take some time to get through intersection
-			env.timeout(CAR_INTERSECTION_TIME)
+			yield env.timeout(CAR_INTERSECTION_TIME)
 		# Give a reward to the traffic light
-		current_time = env.now()
-		light_change_time = traffic_light.light_change_time
-		delta_t = current_time - light_change_time
-		self.accrued_reward += exp(-delta_t * CT_DISCOUNT_RATE) * 1.0
-		# Maybe want to send credit to previous stop lights to encourage cooperation?
+		traffic_light.accrue_reward(1, env.now)
+		# print(name + ' went ' + direction + ' through light %d at %f' % (traffic_light.name,env.now))
+
+		yield env.timeout(CAR_TRAVEL_TIME)
 		
+		# Maybe want to send credit to previous stop lights to encourage cooperation?
+	env.exit()
+
+def who_triggered(event_list):
+	output = [False] * len(event_list)
+	for i,e in enumerate(event_list):
+		try:
+			if(e.ok):
+				output[i] = True
+		except(AttributeError):
+			pass
+	return output
+
+def max_simtime_trigger(env, event):
+	yield env.timeout(MAX_SIMTIME)
+	print('Max simtime reached')
+	event.succeed()
 
 
-
-
+## --- ED Env
 
 class TrafficLight(Agent):
 
-	def __init__(self):
-		self.resource = simpy.Resource(1)
-		self.direction = True # North
+	def __init__(self, simpy_env, id_num):
+		self.simpy_env = simpy_env
+		self.name = id_num
+		self.queues = {'north': simpy.PriorityResource(simpy_env,1), 'south': simpy.PriorityResource(simpy_env,1),
+			'east': simpy.PriorityResource(simpy_env,1), 'west': simpy.PriorityResource(simpy_env,1)}
+
+		self.direction = (random.random() > 0.5) # True is North
 		self.light_change_time = 0.
 		self.accrued_reward = 0.
+		self.time_trigger = -1
+		self.sojourn_time = -1
 		return
 
-	def reset(self):
-		self.resource = simpy.Resource(1)
-		self.direction = True # North
-		self.light_change_time = 0.
+	def set_neighboring_lights(self,neighbors):
+		self.neighbors = neighbors # Expecting array [North Neighbor, S.., E.., West Neighbor]
+
+	def accrue_reward(self, reward, current_time):
+		light_change_time = self.light_change_time
+		delta_t = current_time - light_change_time
+		self.accrued_reward += exp(-delta_t * CT_DISCOUNT_RATE) * reward
+
+	def change_traffic(self, event, time_to_allow):
+
+		self.direction = not self.direction
+
+
+		if(self.direction): # allowing NS
+			with self.queues['east'].request(priority = 0) as req1:
+				with self.queues['west'].request(priority = 0) as req2:
+					yield req1 and req2
+					self.time_trigger = self.simpy_env.now + time_to_allow
+					self.sojourn_time = time_to_allow
+					yield self.simpy_env.timeout(time_to_allow)
+					event.succeed()
+		else: # allowing east west
+			with self.queues['north'].request(priority = 0) as req1:
+				with self.queues['south'].request(priority = 0) as req2:
+					yield req1 and req2
+					self.time_trigger = self.simpy_env.now + time_to_allow
+					self.sojourn_time = time_to_allow
+					yield self.simpy_env.timeout(time_to_allow)
+					event.succeed()
+
+	def get_obs(self):
+		out = [ len(self.queues[d].queue) for d in {'north', 'south', 'east', 'west'} ]
+		out = out + [ n.time_remaining if n is not None else MAX_STOP_TIME for n in self.neighbors ]
+		out = out + [self.sojourn_time]
+		return out
+
+
+	def get_reward(self):
+		reward = self.accrued_reward
 		self.accrued_reward = 0.
-		return
+		return reward
+
+	@property
+	def time_remaining(self):
+		if(self.direction):
+			return self.time_trigger - self.simpy_env.now
+		else:
+			return -self.time_trigger + self.simpy_env.now
 
 
 
@@ -79,9 +153,9 @@ class TrafficLight(Agent):
 			# time until next decision on its neighbors N,S,E,W (4D in [-max_stop_time,max_stop_time])
 			#		-ve means traffic is not being allowed in their direction
 			# its own sojourn time (prev-action) (1D) 
-		max_cars = 20 # cars
-		max_stop_time = 100 # seconds
-		min_stop_time = 2 # seconds
+		max_cars = 200 # cars
+		max_stop_time = MAX_STOP_TIME # seconds
+		min_stop_time = MIN_STOP_TIME # seconds
 		return Box( np.array([0]*4 + [-max_stop_time]*4 + [min_stop_time]), 
 					np.array([max_cars]*4 + [max_stop_time]*5) )
 
@@ -89,8 +163,8 @@ class TrafficLight(Agent):
 	def action_space(self):
 		# Actions oscillate between allowing N/S traffic and E/W traffic, 
 		#  the action is the amount of time to allow traffic through
-		max_stop_time = 100 # seconds
-		min_stop_time = 2 # seconds
+		max_stop_time = MAX_STOP_TIME # seconds
+		min_stop_time = MIN_STOP_TIME # seconds
 		return Box( np.array([min_stop_time]), np.array([max_stop_time]))
 
 
@@ -99,50 +173,70 @@ class TrafficLightEnv(AbstractMAEnv, EzPickle):
 
 
 	def __init__(self):
-		num_agents = 4
-		self.env_agents = [SimpleAgent() for _ in range(num_agents)] # NEEDED
-		# Internal
-		self.n_agents = len(self.env_agents)
+		
+		self.discount = CT_DISCOUNT_RATE
 
+		self.n_agents = 4
 		self.max_stop_time = 100 # seconds
 		self.min_stop_time = 2 # seconds
-
-		# specificy connectivity as agent j (col) who is [N,S,E,W] of agent i (row)
+		# specify connectivity as East to West across row, North to South across column
 		self.connectivity = np.array([
-			[0,3,0,2], # Agent 1 has 3 to its S and 2 to its W
-			[0,4,1,0],
-			[1,0,0,4],
-			[2,0,3,0]
+			[0,1],
+			[2,3]
 			])
-		# TODO extend connecitivity to handle n_row, n_col arbitrarily
 
-		self.queue = np.array([[0]*4]*self.n_agents ) # initially no one in the queue
-		self.allowing_NS = [True]*self.n_agents # True == N/S, False == E/W
-
-		self.times_remaining = [0.]*self.n_agents # amount of time remaining before agent's next action
-		self.previous_actions = np.zeros(num_agents, 1) 
-
-		self.accrued_rewards = [0.]*self.n_agents
-
+		# Assigned on reset()
+		self.env_agents = [None for _ in range(self.n_agents)] # NEEDED
+		self.simpy_env = None
+		self.agent_event_list = [None]* self.n_agents
 
 
 		EzPickle.__init__(self)
-
 		self.seed()
-
 		self.reset()
 
-
 	def reset(self):
-		self.queue = np.array([[0]*4]*self.n_agents ) # initially no one in the queue
-		self.allowing_NS = [True]*self.n_agents # True == N/S, False == E/W
 
-		self.times_remaining = [0.]*self.n_agents
+		global car_counter
+		car_counter = 0
+
+		self.simpy_env = simpy.Environment()
+		env = self.simpy_env
+		self.env_agents = [TrafficLight(env, i) for i in range(self.n_agents)]
+
+		self.max_simtime_event = simpy.Event(self.simpy_env)
+		self.simpy_env.process( max_simtime_trigger(self.simpy_env, self.max_simtime_event) )
+
+		# Set neighboring lights
+		for i in range(self.connectivity.shape[0]):
+			for j in range(self.connectivity.shape[1]):
+				north = self.env_agents[self.connectivity[i-1,j]] if i > 0 else None
+				south = self.env_agents[self.connectivity[i+1,j]] if i < self.connectivity.shape[0]-1 else None
+				east = self.env_agents[self.connectivity[i,j-1]] if j > 0 else None
+				west = self.env_agents[self.connectivity[i,j+1]] if j < self.connectivity.shape[1]-1 else None
+				self.env_agents[self.connectivity[i,j]].set_neighboring_lights([north,south,east,west])
+
+		# Car generators
+		for i in range(self.connectivity.shape[0]):
+			traffic_light_list = [self.env_agents[j] for j in self.connectivity[i,:].tolist() ]
+
+			# East-bound
+			env.process(car_generator(env, traffic_light_list,'east'))
+			# West-bound
+			env.process(car_generator(env, traffic_light_list[::-1],'west'))
+
+		for i in range(self.connectivity.shape[1]):
+			traffic_light_list = [self.env_agents[j] for j in self.connectivity[:,i].tolist() ]
+
+			# South-bound
+			env.process(car_generator(env, traffic_light_list,'south'))
+			# North-bound
+			env.process(car_generator(env, traffic_light_list[::-1],'north'))
+
 
 		# Call this with initial actions
-		time_range = 10
-		return self.step(np.random.rand(self.n_agents, 1) * time_range + self.min_stop_time  )[0]
-		#return self.step(3)[0]
+		time_range = 4
+		return self.step( (np.random.rand(self.n_agents, 1) * time_range + self.min_stop_time).tolist()  )[0]
 
 	def step(self, actions):
 
@@ -156,20 +250,31 @@ class TrafficLightEnv(AbstractMAEnv, EzPickle):
 		#   The action returned by the (decentralized) policy will look like
 		#                                      [  None ,  None ,  a3_t ,  None ,  a5_t   ]
 
-		# Change times remaining, prev_actions given new actions
-		for i, a in enumerate(actions.tolist()):
+		for i, a in enumerate(actions):
 			if a is not None: 
-				self.times_remaining[i] = a
-				self.prev_actions[i] = a
-				# switch agent who just acted's direction
-				self.allowing_NS[i] = not self.allowing_NS[i]
+				# need to bound action
+				action = max( min(a[0], MAX_STOP_TIME), MIN_STOP_TIME )
+				event = simpy.Event(self.simpy_env)
+				self.agent_event_list[i] = event
+				self.simpy_env.process(self.env_agents[i].change_traffic(event, action))
 
-		# Compute execution time
-		execution_time = min(self.times_remaining)
+		self.simpy_env.run(until = simpy.AnyOf(self.simpy_env, self.agent_event_list + [self.max_simtime_event]))
 
+		whotriggered = who_triggered(self.agent_event_list)
 
+		# Get next_obs, rewards
+		
 
-
+		# Check if max_simtime_reached
+		try:
+			self.max_simtime_event.ok
+			done = True
+			obs = [ e.get_obs() for e in self.env_agents  ]
+			rewards = [ e.get_reward() for e in self.env_agents ]
+		except(AttributeError):
+			done = False
+			obs = [ self.env_agents[i].get_obs() if w else [None] for i, w in enumerate(whotriggered)  ]
+			rewards = [ self.env_agents[i].get_reward() if w else None for i, w in enumerate(whotriggered)  ]
 
 
 
@@ -213,3 +318,64 @@ class TrafficLightEnv(AbstractMAEnv, EzPickle):
 
 	def terminate(self):
 		return
+
+
+
+if __name__ == "__main__":
+
+	# TLE = TrafficLightEnv()
+
+	# print('Resetting...')
+
+	# obs = TLE.reset()
+
+
+	# for i in range(3):
+	# 	obs, rewards, _, _ = TLE.step( [np.array([30]) if o != [None] else None for o in obs] )
+
+
+	from sandbox.rocky.tf.policies.gaussian_mlp_policy import GaussianMLPPolicy
+	from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
+	from sandbox.rocky.tf.core.network import MLP
+	from sandbox.rocky.tf.envs.base import TfEnv
+	from sandbox.rocky.tf.algos.trpo import TRPO
+	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
+	from EDFirestorm.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
+	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
+                                                                      FiniteDifferenceHvp)
+	import tensorflow as tf
+
+	import rllab.misc.logger as logger
+
+	env = TrafficLightEnv()
+	env = TfEnv(env)
+
+	# logger.add_tabular_output('./ED_driving_GRU.log')
+
+	# feature_network = MLP(name='feature_net', input_shape=(
+	# 				env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
+	# 									output_dim=7,
+	# 									hidden_nonlinearity=tf.nn.tanh,
+	# 									hidden_sizes=(32, 32), output_nonlinearity=None)
+
+	# policy = GSMDPGaussianGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
+	policy = GaussianMLPPolicy(env_spec=env.spec, name = "policy")
+	baseline = LinearFeatureBaseline(env_spec=env.spec)
+	algo = TRPO(
+		env=env,
+		policy=policy,
+		baseline=baseline,
+		n_itr=75,
+		max_path_length=100000,
+		discount=CT_DISCOUNT_RATE,
+
+		# optimizer=ConjugateGradientOptimizer(
+  #                                hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
+		sampler_cls = GSMDPBatchSampler
+	)
+
+	algo.train()
+
+
+
+

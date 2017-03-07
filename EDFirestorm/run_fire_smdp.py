@@ -40,7 +40,7 @@ class UAV(Agent):
 	@property
 	def action_space(self):
 
-		return Box(low=-1., high=1., shape=(2,))
+		return Discrete(3)
 
 
 
@@ -83,8 +83,17 @@ class FirestormSMDPEnv(AbstractMAEnv, EzPickle):
 
 		self.rewards_to_give = [0]*len(self.env_agents)
 
+		curr_actions = [ a for a in self.fire_extinguish.u_loca ]
+		curr_actions = [item for sublist in curr_actions for item in sublist] # flatten
+		next_state, obs, r = self.fire_extinguish.transition(self.current_state,curr_actions)
 
-		return self.step( initial_actions )[0]
+		self.prev_action = curr_actions
+
+		self.current_state = next_state
+
+
+		return obs
+		#return self.step( initial_actions )[0]
 
 	def step(self, actions):
 
@@ -98,7 +107,12 @@ class FirestormSMDPEnv(AbstractMAEnv, EzPickle):
 		#   The action returned by the (decentralized) policy will look like
 		#                                      [  None ,  None ,  a3_t ,  None ,  a5_t   ]
 
-		
+		# map discrete actions to continuous fire locations
+
+		# print('Actions: ', actions)
+
+
+		actions = [ np.array(self.fire_extinguish.l_fire[a]) if a is not None else None for a in actions]
 
 		curr_actions = self.prev_action
 		for i in range(len(actions)):
@@ -125,10 +139,14 @@ class FirestormSMDPEnv(AbstractMAEnv, EzPickle):
 					self.rewards_to_give[ind] = 0
 		else:
 			rewards = self.rewards_to_give
+			# TODO obs here must include the last sojourn time for each agent
+
 
 		
 
-
+		# print('Obs: ', obs)
+		# print('Rewards: ', rewards)
+		# print('Done: ', done)
 
 		return obs, rewards, done, {}
 
@@ -176,8 +194,7 @@ class FirestormSMDPEnv(AbstractMAEnv, EzPickle):
 
 if __name__ == "__main__":
 	
-	from sandbox.rocky.tf.policies.gaussian_mlp_policy import GaussianMLPPolicy
-	from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
+	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
 	from sandbox.rocky.tf.core.network import MLP
 	from sandbox.rocky.tf.envs.base import TfEnv
 	from sandbox.rocky.tf.algos.trpo import TRPO
@@ -201,7 +218,7 @@ if __name__ == "__main__":
 	# 									hidden_sizes=(32, 32), output_nonlinearity=None)
 
 	# policy = GSMDPGaussianGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
-	policy = GaussianMLPPolicy(env_spec=env.spec, name = "policy")
+	policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
 	baseline = LinearFeatureBaseline(env_spec=env.spec)
 	algo = TRPO(
 		env=env,

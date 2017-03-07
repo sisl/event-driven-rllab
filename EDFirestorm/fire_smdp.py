@@ -26,7 +26,7 @@ class fire_extinguish(object):
   # fire information
   l_fire = [[-0.5,0.5], [0.5,-0.5], [0.9,-0.9]]
   r_fire = [5.0, 1.0, 1.0]
-  e_fire = [[0.05,0.9],[0.9,0.9],[0.9,0.9]]
+  e_fire = [[0.00,0.9],[0.9,0.9],[0.9,0.9]]
   t_fire = 0.5
   d_fire = 0.1
   #d_fire = 0.5 * self.disc_intval
@@ -119,7 +119,20 @@ class fire_extinguish(object):
 
     distance = ((delta_x[0])**2 + (delta_x[1])**2)**0.5
 
-    return distance/self.speed_fixed
+    if distance < 0.02:
+
+      distance = 0.02
+
+    tt = distance/self.speed_fixed
+
+    if tt < 1000.0:
+
+      return tt
+
+    else:
+
+      return 2.0
+
 
 
 
@@ -159,6 +172,10 @@ class fire_extinguish(object):
 
   def next_state_fire_update(self,current_state,next_state,delta_t):
 
+    # Yi-Chun update, make fire extinguish much easier.
+
+    
+
     next_state_updated = next_state[:]
 
     for i_fire in range(self.n_fire):
@@ -173,17 +190,17 @@ class fire_extinguish(object):
         j_uav_location_next = next_state[2*j_uav:2*j_uav+2]
 
 
-        if self.uav_on_fire(j_uav_location_current,i_fire_location) and self.uav_on_fire(j_uav_location_next,i_fire_location):
+        if self.uav_on_fire(j_uav_location_current,i_fire_location):# and self.uav_on_fire(j_uav_location_next,i_fire_location):
 
           n_uav_on_fire += 1
 
       if n_uav_on_fire >= 2:
 
-        next_state_updated[3*self.n_uav + i_fire] = current_state[3*self.n_uav + i_fire] - self.e_fire[i_fire][1] * delta_t
+        next_state_updated[3*self.n_uav + i_fire] = current_state[3*self.n_uav + i_fire] - self.e_fire[i_fire][1] * 50.0#delta_t
 
       elif n_uav_on_fire == 1:
 
-        next_state_updated[3*self.n_uav + i_fire] = current_state[3*self.n_uav + i_fire] - self.e_fire[i_fire][0] * delta_t
+        next_state_updated[3*self.n_uav + i_fire] = current_state[3*self.n_uav + i_fire] - self.e_fire[i_fire][0] * 50.0#delta_t
 
       else:
 
@@ -222,8 +239,6 @@ class fire_extinguish(object):
 
     waiting_time = current_state[2 * self.n_uav : 3 * self.n_uav]
 
-
-    
     idx, val = min(enumerate(waiting_time), key=operator.itemgetter(1))
     sojurn_t = val; actor = idx
 
@@ -272,6 +287,7 @@ class fire_extinguish(object):
 
 
     # observation
+
     obs = [  [None]   ] * self.n_uav
     obs[next_actor] = next_state[0:2*self.n_uav] + self.fire_state_parsing(next_state[3*self.n_uav:]) + [sojurn_t]
 

@@ -24,13 +24,16 @@ import random
 from math import exp
 
 
-T_INTER = [2,15] # Time range for cars entering system
+T_INTER = [5,6] #[2,15] # Time range for cars entering system
 CAR_INTERSECTION_TIME = 1.0
 CAR_TRAVEL_TIME = 3.0
-CT_DISCOUNT_RATE = 0.01
+CT_DISCOUNT_RATE = math.log(0.9)/(-100.) # decay to 90% in 100 seconds 
 MAX_STOP_TIME = 100.
 MIN_STOP_TIME = 2.
-MAX_SIMTIME = 1000
+MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.1% in discounted value
+WAIT_REWARD_FACTOR = 0.1 # How much does 1 second of wait cost all traffic lights?
+INTERSECTION_CLEARING_TIME = 30.
+
 
 
 ## --- SIMPY FUNCTIONS
@@ -47,19 +50,27 @@ def car_generator(env,traffic_light_list, direction):
 	env.exit()
 
 def car(name, env, traffic_light_list, direction):
+	start_time = env.now
 	for i, traffic_light in enumerate(traffic_light_list):
-
+		queue_len = len(traffic_light.queues[direction].queue)
+		start_time_in_queue = env.now
 		with traffic_light.queues[direction].request(priority = 1) as req:
 			yield req
 			# Take some time to get through intersection
 			yield env.timeout(CAR_INTERSECTION_TIME)
 		# Give a reward to the traffic light
 		traffic_light.accrue_reward(1, env.now)
-		# print(name + ' went ' + direction + ' through light %d at %f' % (traffic_light.name,env.now))
+		# print(name + ' went ' + direction + ' through light %d after waiting %.2f with q-size %d at time %.2f' \
+		#  % (traffic_light.name,env.now-start_time_in_queue, queue_len, env.now))
 
 		yield env.timeout(CAR_TRAVEL_TIME)
 		
 		# Maybe want to send credit to previous stop lights to encourage cooperation?
+
+	end_time = env.now
+	# credit all lights passed through equally for wait time
+	for traffic_light in traffic_light_list:
+		traffic_light.accrue_reward(  -(end_time - start_time)*WAIT_REWARD_FACTOR, end_time )
 	env.exit()
 
 def who_triggered(event_list):
@@ -116,6 +127,12 @@ class TrafficLight(Agent):
 					self.sojourn_time = time_to_allow
 					yield self.simpy_env.timeout(time_to_allow)
 					event.succeed()
+					with self.queues['north'].request(priority = 0) as req1:
+						with self.queues['south'].request(priority = 0) as req2:
+							yield req1 and req2
+							yield self.simpy_env.timeout(INTERSECTION_CLEARING_TIME)
+
+
 		else: # allowing east west
 			with self.queues['north'].request(priority = 0) as req1:
 				with self.queues['south'].request(priority = 0) as req2:
@@ -124,9 +141,17 @@ class TrafficLight(Agent):
 					self.sojourn_time = time_to_allow
 					yield self.simpy_env.timeout(time_to_allow)
 					event.succeed()
+					with self.queues['east'].request(priority = 0) as req1:
+						with self.queues['west'].request(priority = 0) as req2:
+							yield req1 and req2
+							yield self.simpy_env.timeout(INTERSECTION_CLEARING_TIME)
 
 	def get_obs(self):
-		out = [ len(self.queues[d].queue) for d in {'north', 'south', 'east', 'west'} ]
+		if(self.direction):
+			# so that TrafficLight Policy always sees the queue they're going to allow first
+			out = [ len(self.queues[d].queue) for d in ['north', 'south', 'east', 'west'] ]
+		else:
+			out = [ len(self.queues[d].queue) for d in ['east', 'west', 'north', 'south'] ]
 		out = out + [ n.time_remaining if n is not None else MAX_STOP_TIME for n in self.neighbors ]
 		out = out + [self.sojourn_time]
 		return out
@@ -176,14 +201,13 @@ class TrafficLightEnv(AbstractMAEnv, EzPickle):
 		
 		self.discount = CT_DISCOUNT_RATE
 
-		self.n_agents = 4
+		num_row_col = 1
+
+		self.n_agents = num_row_col ** 2
 		self.max_stop_time = 100 # seconds
 		self.min_stop_time = 2 # seconds
 		# specify connectivity as East to West across row, North to South across column
-		self.connectivity = np.array([
-			[0,1],
-			[2,3]
-			])
+		self.connectivity = np.array(list(range(self.n_agents))).reshape((num_row_col,num_row_col))
 
 		# Assigned on reset()
 		self.env_agents = [None for _ in range(self.n_agents)] # NEEDED
@@ -328,10 +352,15 @@ if __name__ == "__main__":
 	# print('Resetting...')
 
 	# obs = TLE.reset()
+	# print('Obs: ', obs)
 
 
 	# for i in range(3):
-	# 	obs, rewards, _, _ = TLE.step( [np.array([30]) if o != [None] else None for o in obs] )
+	# 	obs, rewards, _, _ = TLE.step( [np.array([2]) if o != [None] else None for o in obs] )
+	# 	print('Obs: ', obs)
+	# 	print('Reward: ', rewards)
+
+	# quit()
 
 
 	from sandbox.rocky.tf.policies.gaussian_mlp_policy import GaussianMLPPolicy

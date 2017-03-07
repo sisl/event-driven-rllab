@@ -38,8 +38,10 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	rewards = [[] for _ in range(n_agents)]
 	agent_infos = [[] for _ in range(n_agents)]
 	env_infos = [[] for _ in range(n_agents)]
+	offset_t_sojourn = [[] for _ in range(n_agents)]
 	olist = env.reset()
 	assert len(olist) == n_agents, "{} != {}".format(len(olist), n_agents)
+
 
 	
 
@@ -69,6 +71,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			# i refers to indices with Nones
 			i = agents_to_act[ind]
 			observations[i].append(env.observation_space.flatten(o))
+			# observations[i].append(o) # REMOVE THIS AND UNCOMMENT THE ABOVE LINE
 			actions[i].append(env.action_space.flatten(alist[ind]))
 			next_actions[i] = alist[ind]
 			if agent_info_list is None:
@@ -86,8 +89,8 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			# skip reward if agent has not acted yet
 			if( len(observations[i]) > 0 ):
 				rewards[i].append(r)
-				# pdb.set_trace()
-				observations[i][0][-1] = env.observation_space.flatten(next_olist[i])[-1]
+				print(i, next_olist[i])
+				offset_t_sojourn[i].append(env.observation_space.flatten(next_olist[i])[-1])
 				env_infos[i].append(env_info)
 		path_length = max( [len(o) for o in observations] ) 
 		if d:
@@ -121,13 +124,16 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	agent_infos = [i for i in agent_infos if len(i) > 0]
 	env_infos = [e for e in env_infos if len(e) > 0]
 
+	pdb.set_trace()
+
 	return [
 		dict(
 			observations=tensor_utils.stack_tensor_list(observations[i]),
 			actions=tensor_utils.stack_tensor_list(actions[i]),
 			rewards=tensor_utils.stack_tensor_list(rewards[i]),
 			agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos[i]),
-			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),) for i in range(n_agents)
+			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),
+			offset_t_sojourn=tensor_utils.stack_tensor_dict_list(offset_t_sojourn[i]),) for i in range(n_agents)
 	]
 
 ## Parallel Sampler functions
@@ -218,7 +224,7 @@ class GSMDPSampler(Sampler):
 			all_path_baselines = [self.algo.baseline.predict(path) for path in paths]
 
 		for idx, path in enumerate(paths):
-			t_sojourn = path["observations"][:,-1]
+			t_sojourn = path["offset_t_sojourn"]
 			gamma = self.algo.discount
 			lamda = self.algo.gae_lambda
 			discount_gamma = np.exp(-gamma*t_sojourn)
@@ -332,6 +338,7 @@ class GSMDPSampler(Sampler):
 				paths=paths,
 			)
 
+		pdb.set_trace()
 		logger.log("fitting baseline...")
 		if hasattr(self.algo.baseline, 'fit_with_samples'):
 			self.algo.baseline.fit_with_samples(paths, samples_data)

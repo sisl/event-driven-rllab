@@ -89,7 +89,6 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			# skip reward if agent has not acted yet
 			if( len(observations[i]) > 0 ):
 				rewards[i].append(r)
-				print(i, next_olist[i])
 				offset_t_sojourn[i].append(env.observation_space.flatten(next_olist[i])[-1])
 				env_infos[i].append(env_info)
 		path_length = max( [len(o) for o in observations] ) 
@@ -124,7 +123,6 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	agent_infos = [i for i in agent_infos if len(i) > 0]
 	env_infos = [e for e in env_infos if len(e) > 0]
 
-	pdb.set_trace()
 
 	return [
 		dict(
@@ -133,7 +131,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			rewards=tensor_utils.stack_tensor_list(rewards[i]),
 			agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos[i]),
 			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),
-			offset_t_sojourn=tensor_utils.stack_tensor_dict_list(offset_t_sojourn[i]),) for i in range(n_agents)
+			offset_t_sojourn=tensor_utils.stack_tensor_list(offset_t_sojourn[i]),) for i in range(n_agents)
 	]
 
 ## Parallel Sampler functions
@@ -338,7 +336,6 @@ class GSMDPSampler(Sampler):
 				paths=paths,
 			)
 
-		pdb.set_trace()
 		logger.log("fitting baseline...")
 		if hasattr(self.algo.baseline, 'fit_with_samples'):
 			self.algo.baseline.fit_with_samples(paths, samples_data)

@@ -10,9 +10,9 @@ from rllab.spaces import Box, Discrete
 
 from gym.utils import colorize, seeding
 
-from madrl_environments import AbstractMAEnv, Agent
+from eventdriven.madrl_environments import AbstractMAEnv, Agent
 
-from rltools.util import EzPickle
+from eventdriven.rltools.util import EzPickle
 
 from rllab.envs.env_spec import EnvSpec
 
@@ -199,7 +199,7 @@ if __name__ == "__main__":
 	from sandbox.rocky.tf.envs.base import TfEnv
 	from sandbox.rocky.tf.algos.trpo import TRPO
 	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
-	from EDFirestorm.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
+	from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
 	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
                                                                       FiniteDifferenceHvp)
 	import tensorflow as tf

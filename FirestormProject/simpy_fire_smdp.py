@@ -12,9 +12,9 @@ import simpy
 
 from gym.utils import colorize, seeding
 
-from madrl_environments import AbstractMAEnv, Agent
+from eventdriven.madrl_environments import AbstractMAEnv, Agent
 
-from rltools.util import EzPickle
+from eventdriven.rltools.util import EzPickle
 
 from rllab.envs.env_spec import EnvSpec
 
@@ -25,21 +25,43 @@ from math import exp
 
 
 ## ENVIRONMENT PARAMETERS
-NUM_AGENTS = 2 # Number of agents
-NUM_FIRES = 3 # Number of fires
+# NUM_AGENTS = 2 # Number of agents
+# NUM_FIRES = 3 # Number of fires
+# GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
+# CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
+# MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
+
+# UAV_VELOCITY = 0.3 # m/s
+# HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
+
+# START_POSITIONS = [[-0.9,-0.9], [0.9,0.9]]
+# FIRE_LOCATIONS =  [[-0.5,0.5], [0.5,-0.8], [0.9,-0.9]]
+
+# FIRE_PROB_PROFILES = [ [3.,1.], [10.,3.], [100000., 3.]    ]
+# FIRE_REWARDS = [ 1., 2., 5.]
+
+
+NUM_AGENTS = 4 # Number of agents
+NUM_FIRES = 7 # Number of fires
 GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
 CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
 MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
 
-UAV_VELOCITY = 0.5 # m/s
+UAV_VELOCITY = 0.3 # m/s
 HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 
-START_POSITIONS = [[-0.9,-0.9], [0.9,0.9]]
-FIRE_LOCATIONS =  [[-0.5,0.5], [0.5,-0.8], [0.9,-0.9]]
+START_POSITIONS = [[-0.9,-0.9], [-0.9,0.9], [0.9,-0.9], [0.9,0.9]]
+FIRE_LOCATIONS =  [[-0.8,-0.8], [-0.8,0.8], [0.8,-0.8], [0.8,0.8], 
+					[-0.5, 0.], [0., -0.5], [0., 0.]]
 
-FIRE_PROB_PROFILES = [ [3.,1.], [10.,3.], [10000., 3.]    ]
-FIRE_REWARDS = [ 1., 2., 5.]
-
+FIRE_PROB_PROFILES = [ [1.,0.1, 0.01, 0.001], 
+					   [1.,0.1, 0.01, 0.001], 
+					   [1.,0.1, 0.01, 0.001],
+					   [1.,0.1, 0.01, 0.001],
+					   [20.,3., 0.5 , 0.005],
+					   [20.,3., 0.5 , 0.005],
+					   [1e5, 100., 10., 1. ]    ]
+FIRE_REWARDS = [ 1.,1.,1.,1., 5.,5., 20.]
 
 PRINTING = False
 
@@ -130,13 +152,13 @@ class UAV(Agent):
 
 		if new_goal is None:
 			new_goal = copy.deepcopy(self.goal_position)
-		# stop attacking any fire you are attacking
-		if(self.fire_attacking > -1):
-			self.env.fires[self.fire_attacking].leave_extinguish_party(self)
-			self.fire_attacking = -1
 
 		event = simpy.Event(self.simpy_env)
 		if not hold_current:
+			# stop attacking any fire you are attacking
+			if(self.fire_attacking > -1):
+				self.env.fires[self.fire_attacking].leave_extinguish_party(self)
+				self.fire_attacking = -1
 			self.start_position = copy.deepcopy(self.current_position)
 			self.goal_position = copy.deepcopy(new_goal)
 			travel_time = np.linalg.norm( np.array(self.goal_position) - np.array(self.start_position) ) / UAV_VELOCITY
@@ -152,8 +174,9 @@ class UAV(Agent):
 			# If we're at a fire, join its extinguish party
 			for i, f in enumerate(self.env.fires):
 				if within_epsilon(self.current_position, f.location):
-					f.join_extinguish_party(self)
-					self.fire_attacking = i
+					if(self.fire_attacking != i):
+						f.join_extinguish_party(self)
+						self.fire_attacking = i
 					break
 		self.env.uav_events[self.id_num] = event
 		self.action_time = self.simpy_env.now
@@ -326,6 +349,10 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 			agents_to_act = [True] * self.n_agents
 			self.fires[i].extinguish()
 
+		done = False
+		if(not any([f.status for f in self.fires])):
+			done = True
+
 		# check if any single agent triggered
 		uavs_to_act = who_triggered(self.uav_events)
 		for i in uavs_to_act:
@@ -338,7 +365,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 			self.max_simtime_event.ok
 			done = True
 		except(AttributeError):
-			done = False
+			pass
 		
 
 		if(done):
@@ -393,32 +420,113 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 	def terminate(self):
 		return
 
+class test_policy():
+
+	def reset(self, dones = None):
+		return
+
+	@property
+	def recurrent(self):
+		return False
+	def get_action_2uav(self, obs):
+		my_loc = obs[0:2]		
+		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
+		if(fire_statuses[2] > 0.5):
+			# Big fire alive
+			if(not within_epsilon(my_loc, FIRE_LOCATIONS[2])):
+				return 2
+			else:
+				return 3
+		elif(fire_statuses[1] > 0.5):
+			# Second biggest alive
+			if(not within_epsilon(my_loc, FIRE_LOCATIONS[1])):
+				return 1
+			else:
+				return 3
+		else:
+			# Smallest alive
+			if(not within_epsilon(my_loc, FIRE_LOCATIONS[0])):
+				return 0
+			else:
+				return 3
+
+	def get_action(self, obs):
+
+		my_loc = obs[0:2]		
+		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
+
+		dist = lambda x: np.linalg.norm( np.array(x) - np.array(my_loc))
+
+		closest_small_fire = np.argmin( list(map(dist,FIRE_LOCATIONS[0:4])))
+
+		# Extinguish closest small fire
+		if(fire_statuses[closest_small_fire] > 0.5):
+			# fire alive
+			if(not within_epsilon(my_loc, FIRE_LOCATIONS[closest_small_fire])):
+				return closest_small_fire
+			else:
+				return NUM_FIRES
+		# Otherwise extinguish center fire
+		elif(fire_statuses[6] > 0.5):
+			# fire alive
+			if(not within_epsilon(my_loc, FIRE_LOCATIONS[6])):
+				return 6
+			else:
+				return NUM_FIRES
+		# Otherwise go to closest medium fire
+		else:
+			medium_fire_dists = list(map(dist, FIRE_LOCATIONS[4:6]))
+			if( np.abs(medium_fire_dists[0] - medium_fire_dists[1]) < 0.1  ):
+				closest_medium_fire = 4 if random.random() < 0.5 else 5
+			else:
+				closest_medium_fire = np.argmin( medium_fire_dists ) + 4
+			next_closest_medium_fire = 5 if (closest_medium_fire == 4) else 4
+			if(fire_statuses[closest_medium_fire] > 0.5):
+				if(not within_epsilon(my_loc, FIRE_LOCATIONS[closest_medium_fire])):
+					return closest_medium_fire
+				else:
+					return NUM_FIRES
+			else:
+				if(not within_epsilon(my_loc, FIRE_LOCATIONS[next_closest_medium_fire])):
+					return next_closest_medium_fire
+				else:
+					return NUM_FIRES
+
+
+
+	def get_actions(self, olist):
+		return [ self.get_action(o) for o in olist], {}
+
 
 
 if __name__ == "__main__":
 
+	# # Test_Policy
 	# env =  FireExtinguishingEnv()
-	# print('Resetting...')
-	# obs = env.reset()
-	# print('Obs: ', obs)
 
-	# obs, rew, done, env_info = env.step( [0, 1]  )
+	# from EDFirestorm.EDhelpers import ed_dec_rollout, variable_discount_cumsum
+	# agents = test_policy()
 
-	# print('Obs: ', obs)
-	# print('Reward: ', rew)
+	# average_discounted_rewards = []
 
-	# obs, rew, done, env_info = env.step( [3, None]  )
+	# for i in range(100):
+	# 	paths = ed_dec_rollout(env, agents)
+	# 	for path in paths:
+	# 		t_sojourn = path["offset_t_sojourn"]
+	# 		discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
+	# 		path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
+	# 		average_discounted_rewards.append(path["returns"][0])
 
-	# print('Obs: ', obs)
-	# print('Reward: ', rew)
+	# print(len(average_discounted_rewards))
+	# print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
 
-	# obs, rew, done, env_info = env.step( [None, 3]  )
 
-	# print('Obs: ', obs)
-	# print('Reward: ', rew)
 
 	# pdb.set_trace()
 
+
+
+	
 
 	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
 	from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
@@ -426,7 +534,7 @@ if __name__ == "__main__":
 	from sandbox.rocky.tf.envs.base import TfEnv
 	from sandbox.rocky.tf.algos.trpo import TRPO
 	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
-	from EDFirestorm.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
+	from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
 	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
                                                                       FiniteDifferenceHvp)
 	import tensorflow as tf
@@ -436,7 +544,7 @@ if __name__ == "__main__":
 	env = FireExtinguishingEnv()
 	env = TfEnv(env)
 
-	# logger.add_tabular_output('./ED_driving_GRU.log')
+	# logger.add_tabular_output('./FireExtinguishing_MLP_4agent_7fire_150itr_2.log')
 
 	# feature_network = MLP(name='feature_net', input_shape=(
 	# 				env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
@@ -451,7 +559,7 @@ if __name__ == "__main__":
 		env=env,
 		policy=policy,
 		baseline=baseline,
-		n_itr=75,
+		n_itr=150,
 		max_path_length=100000,
 		discount=CT_DISCOUNT_RATE,
 

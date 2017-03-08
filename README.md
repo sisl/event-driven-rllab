@@ -3,6 +3,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/rllab/rllab/blob/master/LICENSE)
 [![Join the chat at https://gitter.im/rllab/rllab](https://badges.gitter.im/rllab/rllab.svg)](https://gitter.im/rllab/rllab?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+# Event-Driven rllab
+event-driven rllab is a framework that builds on rllab. The central use-case for this framework is multi-agent settings in which agent's actions are temporally-extended and asynchrnous. This package is currently under development, and tutorial on how to use it will be uploaded soon. If you would like to use it in the mean time, please contact kmenda (at) stanford (dot) edu
+
 # rllab
 
 rllab is a framework for developing and evaluating reinforcement learning algorithms. It includes a wide range of continuous control tasks plus implementations of the following algorithms:

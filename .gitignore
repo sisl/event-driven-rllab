@@ -41,3 +41,7 @@ sandbox
 *.png
 
 *.mat
+
+*.pkl
+
+*.csv

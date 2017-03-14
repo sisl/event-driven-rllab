@@ -2,6 +2,7 @@ import copy
 import math
 import sys
 import itertools
+import os.path as osp
 
 import numpy as np
 #from gym import spaces
@@ -25,43 +26,22 @@ from math import exp
 
 
 ## ENVIRONMENT PARAMETERS
-# NUM_AGENTS = 2 # Number of agents
-# NUM_FIRES = 3 # Number of fires
-# GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
-# CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
-# MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
 
-# UAV_VELOCITY = 0.3 # m/s
-# HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
-
-# START_POSITIONS = [[-0.9,-0.9], [0.9,0.9]]
-# FIRE_LOCATIONS =  [[-0.5,0.5], [0.5,-0.8], [0.9,-0.9]]
-
-# FIRE_PROB_PROFILES = [ [3.,1.], [10.,3.], [100000., 3.]    ]
-# FIRE_REWARDS = [ 1., 2., 5.]
+from fire_smdp_params import params
 
 
-NUM_AGENTS = 4 # Number of agents
-NUM_FIRES = 7 # Number of fires
-GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
-CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
-MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
+NUM_AGENTS = params['NUM_AGENTS']
+NUM_FIRES = params['NUM_FIRES']
+GRID_LIM = params['GRID_LIM']
+CT_DISCOUNT_RATE = params['CT_DISCOUNT_RATE']
+MAX_SIMTIME = params['MAX_SIMTIME']
+UAV_VELOCITY = params['UAV_VELOCITY']
+HOLD_TIME = params['HOLD_TIME']
+FIRE_LOCATIONS = params['FIRE_LOCATIONS']
+FIRE_REWARDS = params['FIRE_REWARDS']
+FIRE_PROB_PROFILES = params['FIRE_PROB_PROFILES']
+START_POSITIONS = params['START_POSITIONS']
 
-UAV_VELOCITY = 0.3 # m/s
-HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
-
-START_POSITIONS = [[-0.9,-0.9], [-0.9,0.9], [0.9,-0.9], [0.9,0.9]]
-FIRE_LOCATIONS =  [[-0.8,-0.8], [-0.8,0.8], [0.8,-0.8], [0.8,0.8], 
-					[-0.5, 0.], [0., -0.5], [0., 0.]]
-
-FIRE_PROB_PROFILES = [ [1.,0.1, 0.01, 0.001], 
-					   [1.,0.1, 0.01, 0.001], 
-					   [1.,0.1, 0.01, 0.001],
-					   [1.,0.1, 0.01, 0.001],
-					   [20.,3., 0.5 , 0.005],
-					   [20.,3., 0.5 , 0.005],
-					   [1e5, 100., 10., 1. ]    ]
-FIRE_REWARDS = [ 1.,1.,1.,1., 5.,5., 20.]
 
 PRINTING = False
 
@@ -191,15 +171,15 @@ class UAV(Agent):
 			# The fire statuses
 			# Its sojourn time
 		return Box( np.array( [-GRID_LIM] * 2 +  # OWN
-		   					  [-GRID_LIM] * (2*(NUM_AGENTS-1)) + # Other agents
-		   					  [0.] * NUM_FIRES + # Fires  
-		   					  [0.] # Sojourn time
-		   					  ), 
+							  [-GRID_LIM] * (2*(NUM_AGENTS-1)) + # Other agents
+							  [0.] * NUM_FIRES + # Fires  
+							  [0.] # Sojourn time
+							  ), 
 					np.array( [GRID_LIM] * 2 +  # OWN
-		   					  [GRID_LIM] * (2*(NUM_AGENTS-1)) + # Other agents
-		   					  [1.] * NUM_FIRES + # Fires  
-		   					  [np.inf] # Sojourn time
-		   					  ),  )
+							  [GRID_LIM] * (2*(NUM_AGENTS-1)) + # Other agents
+							  [1.] * NUM_FIRES + # Fires  
+							  [np.inf] # Sojourn time
+							  ),  )
 
 	@property
 	def action_space(self):
@@ -306,7 +286,12 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 	def reset(self):
 
 		self.simpy_env = simpy.Environment()
-		self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp) for i,sp in enumerate(START_POSITIONS) ]
+		if START_POSITIONS is not None:
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp) for i,sp in enumerate(START_POSITIONS) ]
+		else:
+			# we want to randomize
+			start_positions = ( 2.*np.random.random_sample((NUM_AGENTS,2)) - 1.).tolist()
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp) for i,sp in enumerate(start_positions) ]
 		self.fires = [ Fire(self, self.simpy_env, i, FIRE_REWARDS[i], FIRE_PROB_PROFILES[i], fl) 
 			for i, fl in enumerate(FIRE_LOCATIONS)  ]	
 
@@ -420,83 +405,6 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 	def terminate(self):
 		return
 
-class test_policy():
-
-	def reset(self, dones = None):
-		return
-
-	@property
-	def recurrent(self):
-		return False
-	def get_action_2uav(self, obs):
-		my_loc = obs[0:2]		
-		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
-		if(fire_statuses[2] > 0.5):
-			# Big fire alive
-			if(not within_epsilon(my_loc, FIRE_LOCATIONS[2])):
-				return 2
-			else:
-				return 3
-		elif(fire_statuses[1] > 0.5):
-			# Second biggest alive
-			if(not within_epsilon(my_loc, FIRE_LOCATIONS[1])):
-				return 1
-			else:
-				return 3
-		else:
-			# Smallest alive
-			if(not within_epsilon(my_loc, FIRE_LOCATIONS[0])):
-				return 0
-			else:
-				return 3
-
-	def get_action(self, obs):
-
-		my_loc = obs[0:2]		
-		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
-
-		dist = lambda x: np.linalg.norm( np.array(x) - np.array(my_loc))
-
-		closest_small_fire = np.argmin( list(map(dist,FIRE_LOCATIONS[0:4])))
-
-		# Extinguish closest small fire
-		if(fire_statuses[closest_small_fire] > 0.5):
-			# fire alive
-			if(not within_epsilon(my_loc, FIRE_LOCATIONS[closest_small_fire])):
-				return closest_small_fire
-			else:
-				return NUM_FIRES
-		# Otherwise extinguish center fire
-		elif(fire_statuses[6] > 0.5):
-			# fire alive
-			if(not within_epsilon(my_loc, FIRE_LOCATIONS[6])):
-				return 6
-			else:
-				return NUM_FIRES
-		# Otherwise go to closest medium fire
-		else:
-			medium_fire_dists = list(map(dist, FIRE_LOCATIONS[4:6]))
-			if( np.abs(medium_fire_dists[0] - medium_fire_dists[1]) < 0.1  ):
-				closest_medium_fire = 4 if random.random() < 0.5 else 5
-			else:
-				closest_medium_fire = np.argmin( medium_fire_dists ) + 4
-			next_closest_medium_fire = 5 if (closest_medium_fire == 4) else 4
-			if(fire_statuses[closest_medium_fire] > 0.5):
-				if(not within_epsilon(my_loc, FIRE_LOCATIONS[closest_medium_fire])):
-					return closest_medium_fire
-				else:
-					return NUM_FIRES
-			else:
-				if(not within_epsilon(my_loc, FIRE_LOCATIONS[next_closest_medium_fire])):
-					return next_closest_medium_fire
-				else:
-					return NUM_FIRES
-
-
-
-	def get_actions(self, olist):
-		return [ self.get_action(o) for o in olist], {}
-
 
 
 if __name__ == "__main__":
@@ -504,12 +412,13 @@ if __name__ == "__main__":
 	# # Test_Policy
 	# env =  FireExtinguishingEnv()
 
-	# from EDFirestorm.EDhelpers import ed_dec_rollout, variable_discount_cumsum
+	# from eventdriven.EDhelpers import ed_dec_rollout, variable_discount_cumsum
+	# from fire_smdp_params import test_policy 
 	# agents = test_policy()
 
 	# average_discounted_rewards = []
 
-	# for i in range(100):
+	# for i in range(50):
 	# 	paths = ed_dec_rollout(env, agents)
 	# 	for path in paths:
 	# 		t_sojourn = path["offset_t_sojourn"]
@@ -519,13 +428,6 @@ if __name__ == "__main__":
 
 	# print(len(average_discounted_rewards))
 	# print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
-
-
-
-	# pdb.set_trace()
-
-
-
 	
 
 	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
@@ -536,7 +438,7 @@ if __name__ == "__main__":
 	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
 	from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
 	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
-                                                                      FiniteDifferenceHvp)
+																	  FiniteDifferenceHvp)
 	import tensorflow as tf
 
 	import rllab.misc.logger as logger
@@ -544,27 +446,48 @@ if __name__ == "__main__":
 	env = FireExtinguishingEnv()
 	env = TfEnv(env)
 
-	# logger.add_tabular_output('./FireExtinguishing_MLP_4agent_7fire_150itr_2.log')
 
-	# feature_network = MLP(name='feature_net', input_shape=(
-	# 				env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
-	# 									output_dim=7,
-	# 									hidden_nonlinearity=tf.nn.tanh,
-	# 									hidden_sizes=(32, 32), output_nonlinearity=None)
+	# Logger
+	# Look at __init__ for default params and viz folder for loading policy
+	default_log_dir = './FirestormProject/FireExtinguishing/Logs'
+	exp_name = '10U20F_GRU_1000itr'
 
-	# policy = GSMDPGaussianGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
-	policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
+	log_dir = osp.join(default_log_dir, exp_name)
+
+	tabular_log_file = osp.join(log_dir, 'progress.csv')
+	text_log_file = osp.join(log_dir, 'debug.log')
+	params_log_file = osp.join(log_dir, 'params.json')
+
+	# logger.log_parameters_lite(params_log_file, args)
+	logger.add_text_output(text_log_file)
+	logger.add_tabular_output(tabular_log_file)
+	prev_snapshot_dir = logger.get_snapshot_dir()
+	prev_mode = logger.get_snapshot_mode()
+	logger.set_snapshot_dir(log_dir)
+	logger.set_snapshot_mode('last')
+	logger.set_log_tabular_only(False)
+	logger.push_prefix("[%s] " % exp_name)
+
+	feature_network = MLP(name='feature_net', input_shape=(
+					env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
+										output_dim=7,
+										hidden_nonlinearity=tf.nn.tanh,
+										hidden_sizes=(32, 32), output_nonlinearity=None)
+
+	policy = GSMDPCategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
+	# policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
 	baseline = LinearFeatureBaseline(env_spec=env.spec)
 	algo = TRPO(
 		env=env,
 		policy=policy,
 		baseline=baseline,
-		n_itr=150,
+		n_itr=1000,
 		max_path_length=100000,
+		batch_size = 10000,
 		discount=CT_DISCOUNT_RATE,
 
-		# optimizer=ConjugateGradientOptimizer(
-  #                                hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
+		optimizer=ConjugateGradientOptimizer(
+                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
 		sampler_cls = GSMDPBatchSampler
 	)
 

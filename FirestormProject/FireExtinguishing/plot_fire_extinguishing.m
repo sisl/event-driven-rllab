@@ -60,12 +60,8 @@ print -dpng -r300 'TrainingCurve.png'
 
 %%
 
-fires_x = [-0.8, -0.8, 0.8, 0.8,-0.5, 0.5, 0];
-fires_y = [-0.8, 0.8, -0.8, 0.8, 0, 0, 0 ];
-fire_rew = [1,1,1,1,5,5,20];
+load ./Logs/N30F50_500itr.mat
 
-uav_x = [-0.9, -0.9, 0.9, 0.9];
-uav_y = [-0.9, 0.9, -0.9, 0.9];
 
 hc = figure();
 set(hc,'PaperUnits','Points');
@@ -76,16 +72,17 @@ set(hc,'Position',[650,550,350,300]);
 
 
 
-plot(uav_x, uav_y, '*', 'LineWidth', 5);
+% plot(uav_x, uav_y, '*', 'LineWidth', 5);
 hold on
 for i = 1:length(fires_x)
-    plot(fires_x(i), fires_y(i), 'rx', 'LineWidth',fire_rew(i));
+    plot(fires_x(i), fires_y(i), 'rx');
+    text(fires_x(i)+0.015, fires_y(i)+0.015, num2str(fire_levels(i)))
 end
 
 grid on
-legend 'UAV Start Location' 'Fire' 'Location' 'Best'
+legend 'Fire' 'Location' 'Best'
 
-print -dpng -r300 'GameLayout_7F4U.png'
+print -dpng -r300 'GameLayout_50F30U.png'
 
 %%
 load 7fires_4agents.mat
@@ -125,3 +122,33 @@ legend 'Learned Policy' 'Intuitive Policy' 'Location' 'Best'
 title '7 Fires, 4 UAVs'
 
 print -dpng -r300 'TrainingCurve_7F4U.png'
+
+
+%%
+
+
+load ./Logs/N30F50_500itr.mat
+
+avg_mystrategy = 231.776675905;
+std_mystrategy = 88.0538105052;
+
+hc = figure();
+set(hc,'PaperUnits','Points');
+set(hc,'PaperPosition',[650,550,350,300]);
+set(hc,'Units','Points');
+set(hc,'Position',[650,550,350,300]);
+
+plot(Iteration, AverageDiscountedReturn);
+hold on
+C = [0.2123    0.2138    0.6270];
+plot([0,499],[avg_mystrategy, avg_mystrategy]); 
+% plot([0,499],[avg_mystrategy, avg_mystrategy]+std_mystrategy,'--','Color',C )
+plot([0,499],[avg_mystrategy, avg_mystrategy]-std_mystrategy,'--','Color',C )
+grid on
+
+xlabel('Iteration')
+ylabel('Avg Discounted Return')
+legend 'Learned Policy' 'Intuitive Policy' 'Location' 'Best'
+title '7 Fires, 4 UAVs'
+
+print -dpng -r300 'TrainingCurve_50F30U.png'

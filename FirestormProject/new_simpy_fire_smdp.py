@@ -42,8 +42,14 @@ MAX_SIMTIME = params['MAX_SIMTIME']
 UAV_VELOCITY = params['UAV_VELOCITY']
 HOLD_TIME = params['HOLD_TIME']
 FIRE_LOCATIONS = None # params['FIRE_LOCATIONS']
-FIRE_REWARDS = params['FIRE_REWARDS']
-FIRE_PROB_PROFILES = params['FIRE_PROB_PROFILES']
+# FIRE_REWARDS = params['FIRE_REWARDS']
+# FIRE_PROB_PROFILES = params['FIRE_PROB_PROFILES']
+
+from fire_smdp_params import fire_param_generator
+num_fires_of_each_size = [0,0,0,0,20]
+FIRE_REWARDS, FIRE_PROB_PROFILES = fire_param_generator(num_fires_of_each_size)
+
+
 START_POSITIONS = params['START_POSITIONS']
 
 assert NUM_FIRES >= 5, 'Need more than 5 fires'

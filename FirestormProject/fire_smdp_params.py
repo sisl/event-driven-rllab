@@ -90,6 +90,26 @@ import random
 
 # ---- 10 Agents 20 Fires
 
+def fire_param_generator(num_fires_of_each_size):
+	normalized_fire_extinguish_times = np.exp(-np.array(list(range(NUM_AGENTS)))) # How long will
+	# it take 1, 2, .... agents to extinguish the fire?
+
+	scaling_factor = 3. / normalized_fire_extinguish_times # How much to scale normalized_fire_extinguish_times
+		# so that it takes N agents 3 seconds to extinguish this fire
+
+	# set fire rewards quadratically for number of agents
+	fire_rewards_of_each_size = [ (x+1)**2 for x in range(NUM_AGENTS) ]
+
+	# compute FIRE_REWARDS and FIRE_PROB_PROFILES for each actual fire
+	FIRE_REWARDS = []
+	FIRE_PROB_PROFILES = []
+	for i, n in enumerate(num_fires_of_each_size):
+		FIRE_REWARDS += [fire_rewards_of_each_size[i]] * n
+		FIRE_PROB_PROFILES += [ (scaling_factor[i]*normalized_fire_extinguish_times).tolist() ] * n
+
+	return FIRE_REWARDS, FIRE_PROB_PROFILES
+
+
 NUM_AGENTS = 10
 NUM_FIRES = 20
 
@@ -112,9 +132,7 @@ normalized_fire_extinguish_times = np.exp(-np.array(list(range(NUM_AGENTS)))) # 
 scaling_factor = 3. / normalized_fire_extinguish_times # How much to scale normalized_fire_extinguish_times
 	# so that it takes N agents 3 seconds to extinguish this fire
 
-
 # compute number of fires of each size (linear decay with size of fire)
-sf = float(2*NUM_FIRES)/(NUM_AGENTS**2 + NUM_AGENTS)
 num_fires_of_each_size = [8, 6, 4, 2]
 
 # set fire rewards quadratically for number of agents
@@ -311,51 +329,54 @@ def within_epsilon(arr1,arr2):
 # Return: 56.091376214 9.26602384617
 
 # smarter
-# class test_policy():
+class test_policy_smart():
 
-# 	def reset(self, dones = None):
-# 		return
+	def reset(self, dones = None):
+		return
 
-# 	@property
-# 	def recurrent(self):
-# 		return False
+	@property
+	def recurrent(self):
+		return False
 
-# 	def get_action(self, obs):
+	def get_action(self, obs):
 
-# 		# Extract meaningful observations
-# 		my_loc = obs[0:2]
+		# Extract meaningful observations
+		my_loc = obs[0:2]
 
-# 		fires = []
-# 		for i in range(5):
-# 			ind_off = 2 + i*5
-# 			loc = obs[ ind_off: ind_off + 2]
-# 			reward, interest, status = tuple(obs[ind_off + 2 : ind_off + 5])
-# 			level = int(math.sqrt(reward))
-# 			f = {'loc': loc, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level}
-# 			fires.append(f)
+		fires = []
+		for i in range(5):
+			ind_off = 2 + i*5
+			loc = obs[ ind_off: ind_off + 2]
+			reward, interest, status = tuple(obs[ind_off + 2 : ind_off + 5])
+			level = int(math.sqrt(reward))
+			f = {'loc': loc, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level}
+			fires.append(f)
 
 		
-# 		live_fires = [ f for f in fires if f['status']]
+		live_fires = [ f for f in fires if f['status']]
 
-# 		if(len(live_fires) > 0):
-# 			# There are fires alive, so pick the one with biggest gap between interest and level
-# 			interest_gap = [f['lvl'] - f['intr'] for f in live_fires]
-# 			largest_gap_ind = np.argmax(interest_gap)
-# 			fire_to_go_to = live_fires[largest_gap_ind] 
+		if(len(live_fires) > 0):
+			# There are fires alive, so pick the one with biggest gap between interest and level
+			interest_gap = [f['lvl'] - f['intr'] for f in live_fires]
+			largest_gap_ind = np.argmax(interest_gap)
+			fire_to_go_to = live_fires[largest_gap_ind] 
 
-# 			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
-# 				return 5
-# 			else: 
-# 				return fires.index(fire_to_go_to)
+			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
+				return 5
+			else: 
+				return fires.index(fire_to_go_to)
 
 
-# 		else:
-# 			# pick a random action
-# 			return random.randint(0,5)
+		else:
+			# pick a random action
+			return random.randint(0,5)
+
+	def get_actions(self, olist):
+		return [ self.get_action(o) for o in olist], {}
 
 
 # stupider
-class test_policy():
+class test_policy_stupid():
 
 	def reset(self, dones = None):
 		return
@@ -396,8 +417,6 @@ class test_policy():
 		else:
 			# pick a random action
 			return random.randint(0,5)
-
-
 
 
 	def get_actions(self, olist):

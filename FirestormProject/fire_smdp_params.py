@@ -144,8 +144,6 @@ params = { 'NUM_AGENTS': NUM_AGENTS,
 		     }
 
 
-# pdb.set_trace()
-
 
 ## TEST POLICY
 
@@ -259,6 +257,104 @@ def within_epsilon(arr1,arr2):
 # Num Samps: 500
 # 68.3250010153 6.04530597015
 
+# class test_policy():
+
+# 	def reset(self, dones = None):
+# 		return
+
+# 	@property
+# 	def recurrent(self):
+# 		return False
+
+# 	def get_action(self, obs):
+
+# 		my_loc = obs[0:2]		
+# 		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
+
+# 		dist = lambda x: np.linalg.norm( np.array(x) - np.array(my_loc))
+
+# 		# Find largest live fires
+
+# 		live_fire_rewards = [ f if fire_statuses[i] > 0.5 else 0. for i, f in enumerate(FIRE_REWARDS)]
+# 		strongest_live_fire = max(live_fire_rewards)
+# 		indicies_slf = np.where(np.array(live_fire_rewards) == strongest_live_fire)[0].tolist()
+
+# 		# find closest fire loc
+
+# 		slf_locs = [ FIRE_LOCATIONS[i] for i in indicies_slf ]
+
+# 		# if we're at any of these fires, stay
+# 		at_slf_locs = [within_epsilon(i, my_loc) for i in slf_locs]
+# 		if(any(at_slf_locs)):
+# 			# stay
+# 			return NUM_FIRES
+
+# 		# with probability eps pick a random one
+# 		eps = 0.3 # 30% chance we go to a random stongest live fire
+# 		if(random.random() < eps):
+# 			return indicies_slf[random.randint(0,len(indicies_slf) - 1)]
+
+# 		# otherwise pick the closest one
+# 		else:
+# 			distances = [distance(i, my_loc) for i in slf_locs]
+# 			min_index, min_value = min(enumerate(distances), key=operator.itemgetter(1))
+# 			return indicies_slf[min_index]
+
+# 	def get_actions(self, olist):
+# 		return [ self.get_action(o) for o in olist], {}
+
+
+## NEW ENV ---
+# ---- 10U20F
+
+# NumSamps: 500
+# Return: 56.091376214 9.26602384617
+
+# smarter
+# class test_policy():
+
+# 	def reset(self, dones = None):
+# 		return
+
+# 	@property
+# 	def recurrent(self):
+# 		return False
+
+# 	def get_action(self, obs):
+
+# 		# Extract meaningful observations
+# 		my_loc = obs[0:2]
+
+# 		fires = []
+# 		for i in range(5):
+# 			ind_off = 2 + i*5
+# 			loc = obs[ ind_off: ind_off + 2]
+# 			reward, interest, status = tuple(obs[ind_off + 2 : ind_off + 5])
+# 			level = int(math.sqrt(reward))
+# 			f = {'loc': loc, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level}
+# 			fires.append(f)
+
+		
+# 		live_fires = [ f for f in fires if f['status']]
+
+# 		if(len(live_fires) > 0):
+# 			# There are fires alive, so pick the one with biggest gap between interest and level
+# 			interest_gap = [f['lvl'] - f['intr'] for f in live_fires]
+# 			largest_gap_ind = np.argmax(interest_gap)
+# 			fire_to_go_to = live_fires[largest_gap_ind] 
+
+# 			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
+# 				return 5
+# 			else: 
+# 				return fires.index(fire_to_go_to)
+
+
+# 		else:
+# 			# pick a random action
+# 			return random.randint(0,5)
+
+
+# stupider
 class test_policy():
 
 	def reset(self, dones = None):
@@ -270,38 +366,39 @@ class test_policy():
 
 	def get_action(self, obs):
 
-		my_loc = obs[0:2]		
-		fire_statuses = obs[2*NUM_AGENTS : 2*NUM_AGENTS + NUM_FIRES]
+		# Extract meaningful observations
+		my_loc = obs[0:2]
 
-		dist = lambda x: np.linalg.norm( np.array(x) - np.array(my_loc))
+		fires = []
+		for i in range(5):
+			ind_off = 2 + i*5
+			loc = obs[ ind_off: ind_off + 2]
+			reward, interest, status = tuple(obs[ind_off + 2 : ind_off + 5])
+			level = int(math.sqrt(reward))
+			f = {'loc': loc, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level}
+			fires.append(f)
 
-		# Find largest live fires
+		
+		live_fires = [ f for f in fires if f['status']]
 
-		live_fire_rewards = [ f if fire_statuses[i] > 0.5 else 0. for i, f in enumerate(FIRE_REWARDS)]
-		strongest_live_fire = max(live_fire_rewards)
-		indicies_slf = np.where(np.array(live_fire_rewards) == strongest_live_fire)[0].tolist()
+		if(len(live_fires) > 0):
+			# There are fires alive, so pick the one with biggest gap between interest and level
+			dists = [distance(my_loc,  f['loc']) for f in live_fires]
+			min_dist = np.argmin(dists)
+			fire_to_go_to = live_fires[min_dist] 
 
-		# find closest fire loc
+			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
+				return 5
+			else: 
+				return fires.index(fire_to_go_to)
 
-		slf_locs = [ FIRE_LOCATIONS[i] for i in indicies_slf ]
 
-		# if we're at any of these fires, stay
-		at_slf_locs = [within_epsilon(i, my_loc) for i in slf_locs]
-		if(any(at_slf_locs)):
-			# stay
-			return NUM_FIRES
-
-		# with probability eps pick a random one
-		eps = 0.3 # 30% chance we go to a random stongest live fire
-		if(random.random() < eps):
-			return indicies_slf[random.randint(0,len(indicies_slf) - 1)]
-
-		# otherwise pick the closest one
 		else:
-			distances = [distance(i, my_loc) for i in slf_locs]
-			min_index, min_value = min(enumerate(distances), key=operator.itemgetter(1))
-			return indicies_slf[min_index]
+			# pick a random action
+			return random.randint(0,5)
+
+
+
 
 	def get_actions(self, olist):
 		return [ self.get_action(o) for o in olist], {}
-

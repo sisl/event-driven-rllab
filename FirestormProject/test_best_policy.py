@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
 	with tf.Session() as sess:
 
-		obj = joblib.load('./FirestormProject/FireExtinguishing/Logs/EVEN_Newer_10U20F_GRU/itr_749.pkl')
+		obj = joblib.load('./FirestormProject/FireExtinguishing/Logs/WithGamma_10U20F_GRU/itr_499.pkl')
 
 		print(obj)
 
@@ -54,15 +54,15 @@ if __name__ == "__main__":
 
 		average_discounted_rewards = []
 
-		CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
+		GAMMA = 0. #math.log(0.9)/(-5.) # decay to 90% in 5 seconds
 
 		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]
-				discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
+				discount_gamma = np.exp(-GAMMA*t_sojourn)
 				path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-				average_discounted_rewards.append(path["returns"][0])
+				average_discounted_rewards.append(sum(path["rewards"]))
 
 			if(i%10 == 0):
 				print('Iteration: ', i)
@@ -76,15 +76,13 @@ if __name__ == "__main__":
 
 		average_discounted_rewards = []
 
-		CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
-
 		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]
-				discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
+				discount_gamma = np.exp(-GAMMA*t_sojourn)
 				path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-				average_discounted_rewards.append(path["returns"][0])
+				average_discounted_rewards.append(sum(path["rewards"]))
 
 			if(i%10 == 0):
 				print('Iteration: ', i)
@@ -99,15 +97,13 @@ if __name__ == "__main__":
 
 		average_discounted_rewards = []
 
-		CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
-
 		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]
-				discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
+				discount_gamma = np.exp(-GAMMA*t_sojourn)
 				path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-				average_discounted_rewards.append(path["returns"][0])
+				average_discounted_rewards.append(sum(path["rewards"]))
 
 			if(i%10 == 0):
 				print('Iteration: ', i)

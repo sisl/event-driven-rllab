@@ -43,6 +43,7 @@ NUM_AGENTS = params['NUM_AGENTS']
 NUM_FIRES = params['NUM_FIRES']
 GRID_LIM = params['GRID_LIM']
 CT_DISCOUNT_RATE = params['CT_DISCOUNT_RATE']
+GAMMA = params['GAMMA']
 MAX_SIMTIME = params['MAX_SIMTIME']
 UAV_VELOCITY = params['UAV_VELOCITY']
 HOLD_TIME = params['HOLD_TIME']
@@ -159,7 +160,7 @@ class UAV(Agent):
 		return reward
 
 	def accrue_reward(self, reward):
-		self.accrued_reward += exp(-self.time_since_action * CT_DISCOUNT_RATE) * reward
+		self.accrued_reward += exp(-self.time_since_action * GAMMA) * exp(-self.simpy_env.now * CT_DISCOUNT_RATE) * reward
 
 	# Difference from simpy_fire_smdp: new_goal is now a index into using self.fire_indicies
 	def change_goal(self, hold_current = False, new_goal = None):
@@ -341,7 +342,7 @@ class Fire():
 			if(a in self.extinguish_party):
 				a.accrue_reward(self.reward)
 			else:
-				a.accrue_reward(self.reward / 5)
+				a.accrue_reward(self.reward)
 		# set event to one that never triggers
 		self.extinguish_event = simpy.Event(self.simpy_env)
 		self.env.fire_events[self.id_num] = self.extinguish_event
@@ -359,7 +360,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 	def __init__(self):
 		
-		self.discount = CT_DISCOUNT_RATE
+		self.discount = GAMMA
 
 		self.n_agents = NUM_AGENTS
 		self.n_fires = NUM_FIRES
@@ -518,49 +519,49 @@ if __name__ == "__main__":
 	# Test_Policy
 	env =  FireExtinguishingEnv()
 
-	from eventdriven.EDhelpers import ed_dec_rollout, variable_discount_cumsum
+	# from eventdriven.EDhelpers import ed_dec_rollout, variable_discount_cumsum
 
 
-	print('Smart Policy')
+	# print('Smart Policy')
 
-	from fire_smdp_params import test_policy_smarter
-	agents = test_policy_smarter()
+	# from fire_smdp_params import test_policy_smarter
+	# agents = test_policy_smarter()
 
-	average_discounted_rewards = []
+	# average_discounted_rewards = []
 
-	for i in range(10):
-		paths = ed_dec_rollout(env, agents)
-		for path in paths:
-			t_sojourn = path["offset_t_sojourn"]
-			discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
-			path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-			average_discounted_rewards.append(path["returns"][0])
+	# for i in range(10):
+	# 	paths = ed_dec_rollout(env, agents)
+	# 	for path in paths:
+	# 		t_sojourn = path["offset_t_sojourn"]
+	# 		discount_gamma = np.exp(-GAMMA*t_sojourn)
+	# 		path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
+	# 		average_discounted_rewards.append(path["returns"][0])
 
-		print('Iteration: ', i)
-		print(len(average_discounted_rewards))
-		print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
+	# 	print('Iteration: ', i)
+	# 	print(len(average_discounted_rewards))
+	# 	print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
 
-	print('Stupid Policy')
+	# print('Stupid Policy')
 	
-	from fire_smdp_params import test_policy_stupid 
-	agents = test_policy_stupid()
+	# from fire_smdp_params import test_policy_stupid 
+	# agents = test_policy_stupid()
 
-	average_discounted_rewards = []
+	# average_discounted_rewards = []
 
-	for i in range(10):
-		paths = ed_dec_rollout(env, agents)
-		for path in paths:
-			t_sojourn = path["offset_t_sojourn"]
-			discount_gamma = np.exp(-CT_DISCOUNT_RATE*t_sojourn)
-			path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-			average_discounted_rewards.append(path["returns"][0])
+	# for i in range(10):
+	# 	paths = ed_dec_rollout(env, agents)
+	# 	for path in paths:
+	# 		t_sojourn = path["offset_t_sojourn"]
+	# 		discount_gamma = np.exp(-GAMMA*t_sojourn)
+	# 		path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
+	# 		average_discounted_rewards.append(path["returns"][0])
 
-		print('Iteration: ', i)
-		print(len(average_discounted_rewards))
-		print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
+	# 	print('Iteration: ', i)
+	# 	print(len(average_discounted_rewards))
+	# 	print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
 
 
-	quit()
+	# quit()
 	
 
 	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
@@ -582,24 +583,24 @@ if __name__ == "__main__":
 
 	# # Logger
 	# Look at __init__ for default params and viz folder for loading policy
-	# default_log_dir = './FirestormProject/FireExtinguishing/Logs'
-	# exp_name = 'EVEN_Newer_10U20F_GRU'
+	default_log_dir = './FirestormProject/FireExtinguishing/Logs'
+	exp_name = 'WithGamma_10U20F_GRU'
 
-	# log_dir = osp.join(default_log_dir, exp_name)
+	log_dir = osp.join(default_log_dir, exp_name)
 
-	# tabular_log_file = osp.join(log_dir, 'progress.csv')
-	# text_log_file = osp.join(log_dir, 'debug.log')
-	# params_log_file = osp.join(log_dir, 'params.json')
+	tabular_log_file = osp.join(log_dir, 'progress.csv')
+	text_log_file = osp.join(log_dir, 'debug.log')
+	params_log_file = osp.join(log_dir, 'params.json')
 
-	# # logger.log_parameters_lite(params_log_file, args)
-	# logger.add_text_output(text_log_file)
-	# logger.add_tabular_output(tabular_log_file)
-	# prev_snapshot_dir = logger.get_snapshot_dir()
-	# prev_mode = logger.get_snapshot_mode()
-	# logger.set_snapshot_dir(log_dir)
-	# logger.set_snapshot_mode('all')
-	# logger.set_log_tabular_only(False)
-	# logger.push_prefix("[%s] " % exp_name)
+	# logger.log_parameters_lite(params_log_file, args)
+	logger.add_text_output(text_log_file)
+	logger.add_tabular_output(tabular_log_file)
+	prev_snapshot_dir = logger.get_snapshot_dir()
+	prev_mode = logger.get_snapshot_mode()
+	logger.set_snapshot_dir(log_dir)
+	logger.set_snapshot_mode('all')
+	logger.set_log_tabular_only(False)
+	logger.push_prefix("[%s] " % exp_name)
 
 	feature_network = MLP(name='feature_net', input_shape=(
 					env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
@@ -617,7 +618,7 @@ if __name__ == "__main__":
 		n_itr=750,
 		max_path_length=100000,
 		batch_size = 20000,
-		discount=CT_DISCOUNT_RATE,
+		discount=GAMMA,
 
 		optimizer=ConjugateGradientOptimizer(
                                  hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),

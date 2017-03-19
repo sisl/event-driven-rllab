@@ -32,6 +32,7 @@ np.random.seed(100)
 
 GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
 CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
+GAMMA = 0. # CT_DISCOUNT_RATE
 MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
 
 UAV_VELOCITY = 0.1 # m/s
@@ -67,6 +68,7 @@ params = { 'NUM_AGENTS': NUM_AGENTS,
 		   'NUM_FIRES': NUM_FIRES,
 		   'GRID_LIM': GRID_LIM,
 		   'CT_DISCOUNT_RATE': CT_DISCOUNT_RATE,
+		   'GAMMA': GAMMA,
 		   'MAX_SIMTIME': MAX_SIMTIME,
 		   'UAV_VELOCITY': UAV_VELOCITY,
 		   'HOLD_TIME': HOLD_TIME,

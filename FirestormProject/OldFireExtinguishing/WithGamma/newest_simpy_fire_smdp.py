@@ -44,7 +44,6 @@ NUM_FIRES = params['NUM_FIRES']
 GRID_LIM = params['GRID_LIM']
 CT_DISCOUNT_RATE = params['CT_DISCOUNT_RATE']
 GAMMA = params['GAMMA']
-LAMBDA = 1.5
 MAX_SIMTIME = params['MAX_SIMTIME']
 UAV_VELOCITY = params['UAV_VELOCITY']
 HOLD_TIME = params['HOLD_TIME']
@@ -53,8 +52,7 @@ FIRE_LOCATIONS = None # params['FIRE_LOCATIONS']
 # FIRE_PROB_PROFILES = params['FIRE_PROB_PROFILES']
 
 from fire_smdp_params import fire_param_generator
-# num_fires_of_each_size = [8,6,4,2]
-num_fires_of_each_size = params['NUM_FIRES_EACH_SIZE']
+num_fires_of_each_size = [8,6,4,2]
 # FIRE_REWARDS, FIRE_PROB_PROFILES = fire_param_generator(num_fires_of_each_size)
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
@@ -147,7 +145,7 @@ class UAV(Agent):
 		self.action_map = closest_five_fires
 		for f_ind in closest_five_fires:
 			f = self.env.fires[f_ind]
-			f_obs = [distance(f.location, self.current_position)]
+			f_obs = copy.deepcopy(f.location)
 			f_obs += [f.reward, len(f.interest_party)]
 			f_obs += [1.] if f.status else [0.]
 			f_obs += [f.uavsecondsleft]
@@ -220,11 +218,11 @@ class UAV(Agent):
 			# For 5 closest fires: location_x, location_y, strength, interest, status, uavsecondsleft
 			# Its sojourn time
 		return Box( np.array( [-GRID_LIM] * 2 +  # OWN
-							  [0., 0., 0., 0., 0.]*5 + # Fires 
+							  [-GRID_LIM, -GRID_LIM, 0., 0., 0., 0.]*5 + # Fires 
 							  [0.] # Sojourn time
 							  ), 
 					np.array( [GRID_LIM] * 2 +  # OWN
-							  [np.inf, 10., float(NUM_AGENTS), 1., np.inf]*5 + # Fires 
+							  [GRID_LIM, GRID_LIM, 10., float(NUM_AGENTS), 1., np.inf]*5 + # Fires 
 							  [np.inf] # Sojourn time
 							  ),  )
 
@@ -440,7 +438,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		# check if any fires triggered
 		fires_extinguished = who_triggered(self.fire_events)
 		for i in fires_extinguished:
-			agents_to_act = [True] * self.n_agents # maybe make this just agents in its interest party?
+			agents_to_act = [True] * self.n_agents
 			self.fires[i].extinguish()
 
 		done = False
@@ -586,7 +584,7 @@ if __name__ == "__main__":
 	# # Logger
 	# Look at __init__ for default params and viz folder for loading policy
 	default_log_dir = './FirestormProject/FireExtinguishing/Logs'
-	exp_name = 'DistObs_WithGamma_3U6F_GRU'
+	exp_name = 'WithGamma_10U20F_GRU'
 
 	log_dir = osp.join(default_log_dir, exp_name)
 
@@ -606,7 +604,7 @@ if __name__ == "__main__":
 
 	feature_network = MLP(name='feature_net', input_shape=(
 					env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
-										output_dim=32,
+										output_dim=7,
 										hidden_nonlinearity=tf.nn.tanh,
 										hidden_sizes=(32, 32), output_nonlinearity=None)
 
@@ -621,7 +619,7 @@ if __name__ == "__main__":
 		max_path_length=100000,
 		batch_size = 20000,
 		discount=GAMMA,
-		gae_lambda = LAMBDA,
+
 		optimizer=ConjugateGradientOptimizer(
                                  hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
 		sampler_cls = GSMDPBatchSampler

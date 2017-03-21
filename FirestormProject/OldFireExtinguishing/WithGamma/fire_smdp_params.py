@@ -25,19 +25,17 @@ def fire_param_generator(num_fires_of_each_size):
 	return FIRE_REWARDS, FIRE_PROB_PROFILES
 
 
-NUM_AGENTS = 3
-NUM_FIRES = 6
-
-num_fires_of_each_size = [2,2,2]
+NUM_AGENTS = 10
+NUM_FIRES = 20
 
 np.random.seed(100)
 
 GRID_LIM = 1 # Upper and lower bound of grid in x and y dimensions
 CT_DISCOUNT_RATE = math.log(0.9)/(-5.) # decay to 90% in 5 seconds
-GAMMA = 0. # 2*CT_DISCOUNT_RATE
+GAMMA = 0. # CT_DISCOUNT_RATE
 MAX_SIMTIME = math.log(0.005)/(-CT_DISCOUNT_RATE)  # actions are 0.05% in discounted value
 
-UAV_VELOCITY = 0.03 # m/s
+UAV_VELOCITY = 0.1 # m/s
 HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 
 # Generate NUM_FIRES random fire locations
@@ -51,7 +49,7 @@ scaling_factor = 3. / normalized_fire_extinguish_times # How much to scale norma
 	# so that it takes N agents 3 seconds to extinguish this fire
 
 # compute number of fires of each size (linear decay with size of fire)
-
+num_fires_of_each_size = [8, 6, 4, 2]
 
 # set fire rewards quadratically for number of agents
 fire_rewards_of_each_size = [ (x+1)**2 for x in range(NUM_AGENTS) ]
@@ -68,7 +66,6 @@ START_POSITIONS = None
 
 params = { 'NUM_AGENTS': NUM_AGENTS,
 		   'NUM_FIRES': NUM_FIRES,
-		   'NUM_FIRES_EACH_SIZE': num_fires_of_each_size,
 		   'GRID_LIM': GRID_LIM,
 		   'CT_DISCOUNT_RATE': CT_DISCOUNT_RATE,
 		   'GAMMA': GAMMA,
@@ -160,17 +157,16 @@ class test_policy_smarter():
 
 	def get_action(self, obs):
 
-
 		# Extract meaningful observations
 		my_loc = obs[0:2]
 
 		fires = []
 		for i in range(5):
-			ind_off = 2 + i*5
-			dist = obs[ ind_off ]
-			reward, interest, status, secondsleft = tuple(obs[ind_off + 1 : ind_off + 5])
+			ind_off = 2 + i*6
+			loc = obs[ ind_off: ind_off + 2]
+			reward, interest, status, secondsleft = tuple(obs[ind_off + 2 : ind_off + 6])
 			level = reward
-			f = {'dist': dist, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level, 'secondsleft': secondsleft}
+			f = {'loc': loc, 'intr': interest, 'status': status > 0.5, 'lvl': level, 'secondsleft': secondsleft}
 			fires.append(f)
 
 		
@@ -178,14 +174,11 @@ class test_policy_smarter():
 
 		if(len(live_fires) > 0):
 			# There are fires alive, so pick the one with biggest gap between interest and level
-			expected_time_at_fire = lambda f: float(f['secondsleft']) / (f['intr'] + 1)
-			expected_time_to_fire = lambda f: f['dist'] / UAV_VELOCITY
-
-			interest_gap = [float(f['lvl']) / (expected_time_at_fire(f) + expected_time_to_fire(f) )  for f in live_fires]
+			interest_gap = [float(f['lvl'] * f['intr']) / f['secondsleft'] for f in live_fires]
 			largest_gap_ind = np.argmax(interest_gap)
 			fire_to_go_to = live_fires[largest_gap_ind] 
 
-			if(fire_to_go_to['dist'] < 1e-2):
+			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
 				return 5
 			else: 
 				return fires.index(fire_to_go_to)
@@ -216,11 +209,11 @@ class test_policy_stupid():
 
 		fires = []
 		for i in range(5):
-			ind_off = 2 + i*5
-			dist = obs[ ind_off ]
-			reward, interest, status, secondsleft = tuple(obs[ind_off + 1 : ind_off + 5])
-			level = reward
-			f = {'dist': dist, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level, 'secondsleft': secondsleft}
+			ind_off = 2 + i*6
+			loc = obs[ ind_off: ind_off + 2]
+			reward, interest, status, secondsleft = tuple(obs[ind_off + 2 : ind_off + 6])
+			level = int(math.sqrt(reward))
+			f = {'loc': loc, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level}
 			fires.append(f)
 
 		
@@ -228,11 +221,11 @@ class test_policy_stupid():
 
 		if(len(live_fires) > 0):
 			# There are fires alive, so pick the one with biggest gap between interest and level
-			dists = [f['dist'] for f in live_fires]
+			dists = [distance(my_loc,  f['loc']) for f in live_fires]
 			min_dist = np.argmin(dists)
 			fire_to_go_to = live_fires[min_dist] 
 
-			if(fire_to_go_to['dist'] < 1e-2):
+			if(within_epsilon(my_loc, fire_to_go_to['loc'])):
 				return 5
 			else: 
 				return fires.index(fire_to_go_to)

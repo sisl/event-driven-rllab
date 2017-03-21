@@ -42,9 +42,11 @@ if __name__ == "__main__":
 
 	with tf.Session() as sess:
 
-		obj = joblib.load('./FirestormProject/FireExtinguishing/Logs/DistObs_WithGamma_3U6F_GRU/itr_100.pkl')
+		obj = joblib.load('./FirestormProject/FireExtinguishing/Logs/WithGamma_10U20F_GRU/itr_499.pkl')
 
-		env = copy.deepcopy(obj['env'])
+		print(obj)
+
+		env = obj['env']
 		policy = obj['policy']
 
 		agents = policy
@@ -54,7 +56,7 @@ if __name__ == "__main__":
 
 		GAMMA = 0. #math.log(0.9)/(-5.) # decay to 90% in 5 seconds
 
-		for i in range(200):
+		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]
@@ -67,8 +69,6 @@ if __name__ == "__main__":
 
 		print(len(average_discounted_rewards))
 		print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
-
-		env = copy.deepcopy(obj['env'])
 
 		from fire_smdp_params import test_policy_smarter
 		agents = test_policy_smarter()
@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
 		average_discounted_rewards = []
 
-		for i in range(200):
+		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]
@@ -89,8 +89,6 @@ if __name__ == "__main__":
 
 		print(len(average_discounted_rewards))
 		print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
-
-		env = copy.deepcopy(obj['env'])
 
 
 		from fire_smdp_params import test_policy_stupid
@@ -99,7 +97,7 @@ if __name__ == "__main__":
 
 		average_discounted_rewards = []
 
-		for i in range(200):
+		for i in range(20):
 			paths = ed_dec_rollout(env, agents)
 			for path in paths:
 				t_sojourn = path["offset_t_sojourn"]

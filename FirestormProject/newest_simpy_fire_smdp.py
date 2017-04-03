@@ -42,7 +42,6 @@ from fire_smdp_params import params
 NUM_AGENTS = params['NUM_AGENTS']
 NUM_FIRES = params['NUM_FIRES']
 GRID_LIM = params['GRID_LIM']
-CT_DISCOUNT_RATE = params['CT_DISCOUNT_RATE']
 GAMMA = params['GAMMA']
 LAMBDA = 1.5
 MAX_SIMTIME = params['MAX_SIMTIME']
@@ -162,7 +161,7 @@ class UAV(Agent):
 		return reward
 
 	def accrue_reward(self, reward):
-		self.accrued_reward += exp(-self.time_since_action * GAMMA) * exp(-self.simpy_env.now * CT_DISCOUNT_RATE) * reward
+		self.accrued_reward += exp(-self.time_since_action * GAMMA) * reward
 
 	# Difference from simpy_fire_smdp: new_goal is now a index into using self.fire_indicies
 	def change_goal(self, hold_current = False, new_goal = None):
@@ -515,11 +514,32 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		return
 
 
+ENV_OPTIONS = [
+	# ('n_walkers', int, 2, ''),
+	# ('position_noise', float, 1e-3, ''),
+	# ('angle_noise', float, 1e-3, ''),
+	# ('reward_mech', str, 'local', ''),
+	# ('forward_reward', float, 1.0, ''),
+	# ('fall_reward', float, -100.0, ''),
+	# ('drop_reward', float, -100.0, ''),
+	# ('terminate_on_fall', int, 1, ''),
+	# ('buffer_size', int, 1, ''),
+]
+
+from FirestormProject.runners import RunnerParser
+from FirestormProject.runners.rurllab import RLLabRunner
 
 if __name__ == "__main__":
 
-	# Test_Policy
+	parser = RunnerParser(ENV_OPTIONS)
+
+	mode = parser._mode
+	args = parser.args
 	env =  FireExtinguishingEnv()
+
+	run = RLLabRunner(env, args)
+
+	run()
 
 	# from eventdriven.EDhelpers import ed_dec_rollout, variable_discount_cumsum
 
@@ -566,68 +586,70 @@ if __name__ == "__main__":
 	# quit()
 	
 
-	from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
-	from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
-	from sandbox.rocky.tf.core.network import MLP
-	from sandbox.rocky.tf.envs.base import TfEnv
-	from sandbox.rocky.tf.algos.trpo import TRPO
-	from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
-	from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
-	from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
-																	  FiniteDifferenceHvp)
-	import tensorflow as tf
+	# from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
+	# from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
+	# from sandbox.rocky.tf.core.network import MLP
+	# from sandbox.rocky.tf.envs.base import TfEnv
+	# from sandbox.rocky.tf.algos.trpo import TRPO
+	# from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
+	# from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
+	# from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
+	# 																  FiniteDifferenceHvp)
+	# import tensorflow as tf
 
-	import rllab.misc.logger as logger
+	# import rllab.misc.logger as logger
 
-	env = FireExtinguishingEnv()
-	env = TfEnv(env)
+	# env = FireExtinguishingEnv()
+	# env = TfEnv(env)
 
 
 	# # Logger
 	# Look at __init__ for default params and viz folder for loading policy
-	default_log_dir = './FirestormProject/FireExtinguishing/Logs'
-	exp_name = 'DistObs_WithGamma_3U6F_GRU'
+	# default_log_dir = './FirestormProject/FireExtinguishing/Logs'
+	# exp_name = 'DistObs_WithGamma_3U6F_GRU'
 
-	log_dir = osp.join(default_log_dir, exp_name)
+	# log_dir = osp.join(default_log_dir, exp_name)
 
-	tabular_log_file = osp.join(log_dir, 'progress.csv')
-	text_log_file = osp.join(log_dir, 'debug.log')
-	params_log_file = osp.join(log_dir, 'params.json')
+	# tabular_log_file = osp.join(log_dir, 'progress.csv')
+	# text_log_file = osp.join(log_dir, 'debug.log')
+	# params_log_file = osp.join(log_dir, 'params.json')
 
-	# logger.log_parameters_lite(params_log_file, args)
-	logger.add_text_output(text_log_file)
-	logger.add_tabular_output(tabular_log_file)
-	prev_snapshot_dir = logger.get_snapshot_dir()
-	prev_mode = logger.get_snapshot_mode()
-	logger.set_snapshot_dir(log_dir)
-	logger.set_snapshot_mode('all')
-	logger.set_log_tabular_only(False)
-	logger.push_prefix("[%s] " % exp_name)
+	# # logger.log_parameters_lite(params_log_file, args)
+	# logger.add_text_output(text_log_file)
+	# logger.add_tabular_output(tabular_log_file)
+	# prev_snapshot_dir = logger.get_snapshot_dir()
+	# prev_mode = logger.get_snapshot_mode()
+	# logger.set_snapshot_dir(log_dir)
+	# logger.set_snapshot_mode('all')
+	# logger.set_log_tabular_only(False)
+	# logger.push_prefix("[%s] " % exp_name)
 
-	feature_network = MLP(name='feature_net', input_shape=(
-					env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
-										output_dim=32,
-										hidden_nonlinearity=tf.nn.tanh,
-										hidden_sizes=(32, 32), output_nonlinearity=None)
+	# feature_network = MLP(name='feature_net', input_shape=(
+	# 				env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
+	# 									output_dim=32,
+	# 									hidden_nonlinearity=tf.nn.tanh,
+	# 									hidden_sizes=(32, 32), output_nonlinearity=None)
 
-	policy = GSMDPCategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
-	# policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
-	baseline = LinearFeatureBaseline(env_spec=env.spec)
-	algo = TRPO(
-		env=env,
-		policy=policy,
-		baseline=baseline,
-		n_itr=750,
-		max_path_length=100000,
-		batch_size = 20000,
-		discount=GAMMA,
-		gae_lambda = LAMBDA,
-		optimizer=ConjugateGradientOptimizer(
-                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
-		sampler_cls = GSMDPBatchSampler
-	)
+	# policy = GSMDPCategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
+	# # policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
+	# baseline = LinearFeatureBaseline(env_spec=env.spec)
+	# algo = TRPO(
+	# 	env=env,
+	# 	policy=policy,
+	# 	baseline=baseline,
+	# 	n_itr=750,
+	# 	max_path_length=100000,
+	# 	batch_size = 20000,
+	# 	discount=GAMMA,
+	# 	gae_lambda = LAMBDA,
+	# 	optimizer=ConjugateGradientOptimizer(
+ #                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
+	# 	sampler_cls = GSMDPBatchSampler
+	# )
 
-	algo.train()
+	# algo.train()
+
+
 
 
 

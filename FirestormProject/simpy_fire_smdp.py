@@ -36,32 +36,16 @@ from math import exp
 
 ## ENVIRONMENT PARAMETERS
 
-from fire_smdp_params import params
 
+GRID_LIM = 1.0 
+GAMMA = math.log(0.9)/(-5.)
+MAX_SIMTIME = math.log(0.005)/(-GAMMA)
 
-NUM_AGENTS = params['NUM_AGENTS']
-NUM_FIRES = params['NUM_FIRES']
-GRID_LIM = params['GRID_LIM']
-GAMMA = params['GAMMA']
-LAMBDA = 1.5
-MAX_SIMTIME = params['MAX_SIMTIME']
-UAV_VELOCITY = params['UAV_VELOCITY']
-HOLD_TIME = params['HOLD_TIME']
-FIRE_LOCATIONS = None # params['FIRE_LOCATIONS']
-# FIRE_REWARDS = params['FIRE_REWARDS']
-# FIRE_PROB_PROFILES = params['FIRE_PROB_PROFILES']
+UAV_VELOCITY = 0.03 # m/s
+HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 
-from fire_smdp_params import fire_param_generator
-# num_fires_of_each_size = [8,6,4,2]
-num_fires_of_each_size = params['NUM_FIRES_EACH_SIZE']
-# FIRE_REWARDS, FIRE_PROB_PROFILES = fire_param_generator(num_fires_of_each_size)
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
-
-
-START_POSITIONS = params['START_POSITIONS']
-
-assert NUM_FIRES >= 5, 'Need more than 5 fires'
 
 
 PRINTING = False
@@ -101,10 +85,11 @@ def distance(arr1,arr2):
 
 class UAV(Agent):
 
-	def __init__(self, env, simpy_env, id_num, start_position, goal_position):
+	def __init__(self, env, simpy_env, id_num, start_position, goal_position, gamma):
 		self.env = env
 		self.simpy_env = simpy_env
 		self.id_num = id_num
+		self.gamma = gamma
 
 		self.start_position = start_position
 		self.goal_position = goal_position
@@ -161,7 +146,7 @@ class UAV(Agent):
 		return reward
 
 	def accrue_reward(self, reward):
-		self.accrued_reward += exp(-self.time_since_action * GAMMA) * reward
+		self.accrued_reward += exp(-self.time_since_action * self.gamma) * reward
 
 	# Difference from simpy_fire_smdp: new_goal is now a index into using self.fire_indicies
 	def change_goal(self, hold_current = False, new_goal = None):
@@ -223,7 +208,7 @@ class UAV(Agent):
 							  [0.] # Sojourn time
 							  ), 
 					np.array( [GRID_LIM] * 2 +  # OWN
-							  [np.inf, 10., float(NUM_AGENTS), 1., np.inf]*5 + # Fires 
+							  [np.inf, 10., np.inf, 1., np.inf]*5 + # Fires 
 							  [np.inf] # Sojourn time
 							  ),  )
 
@@ -234,7 +219,10 @@ class UAV(Agent):
 						 1 ) # stay
 
 
-class Fire():
+class Fire(object):
+
+	def __str__(self):
+		return '<{} instance>'.format(type(self).__name__)
 
 	def __init__(self, env, simpy_env, id_num, level, location):
 		self.env = env
@@ -340,10 +328,11 @@ class Fire():
 	def extinguish(self):
 		self.status = False
 		for a in self.env.env_agents:
-			if(a in self.extinguish_party):
-				a.accrue_reward(self.reward)
-			else:
-				a.accrue_reward(self.reward)
+			# if(a in self.extinguish_party):
+			# 	a.accrue_reward(self.reward)
+			# else:
+			# 	a.accrue_reward(self.reward)
+			a.accrue_reward(self.reward)
 		# set event to one that never triggers
 		self.extinguish_event = simpy.Event(self.simpy_env)
 		self.env.fire_events[self.id_num] = self.extinguish_event
@@ -359,12 +348,19 @@ class Fire():
 class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 
-	def __init__(self):
-		
-		self.discount = GAMMA
+	def __init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
+				 fire_locations = None, start_positions = None):
 
-		self.n_agents = NUM_AGENTS
-		self.n_fires = NUM_FIRES
+		EzPickle.__init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
+				 fire_locations, start_positions)
+		
+		self.discount = gamma
+
+		self.n_agents = num_agents
+		self.n_fires = num_fires
+		self.num_fires_of_each_size = num_fires_of_each_size
+		self.fire_locations = fire_locations
+		self.start_positions = start_positions
 
 		# Assigned on reset()
 		self.env_agents = [None for _ in range(self.n_agents)] # NEEDED
@@ -373,8 +369,6 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		self.uav_events = [] # checks if a UAV needs to act
 		self.fire_events = [] # checks if a fire was extinguished
 
-
-		EzPickle.__init__(self)
 		self.seed()
 		self.reset()
 
@@ -382,25 +376,25 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 		self.simpy_env = simpy.Environment()
 
-		FIRE_LEVELS = []
-		for i, n in enumerate(num_fires_of_each_size):
-			FIRE_LEVELS += [i+1] * n
+		fire_levels = []
+		for i, n in enumerate(self.num_fires_of_each_size):
+			fire_levels += [i+1] * n
 
-		if FIRE_LOCATIONS is not None:
-			self.fires = [ Fire(self, self.simpy_env, i, FIRE_LEVELS[i], fl) 
-				for i, fl in enumerate(FIRE_LOCATIONS)  ]
+		if self.fire_locations is not None:
+			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
+				for i, fl in enumerate(self.fire_locations)  ]
 		else:
 			# we want to randomize
-			fire_locations = ( 2.*np.random.random_sample((NUM_FIRES,2)) - 1.).tolist()
-			self.fires = [ Fire(self, self.simpy_env, i, FIRE_LEVELS[i], fl) 
+			fire_locations = ( 2.*np.random.random_sample((self.n_fires,2)) - 1.).tolist()
+			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
 				for i, fl in enumerate(fire_locations)  ]
 
-		if START_POSITIONS is not None:
-			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp) for i,sp in enumerate(START_POSITIONS) ]
+		if self.start_positions is not None:
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount) for i,sp in enumerate(self.start_positions) ]
 		else:
 			# we want to randomize
-			start_positions = ( 2.*np.random.random_sample((NUM_AGENTS,2)) - 1.).tolist()
-			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp) for i,sp in enumerate(start_positions) ]
+			start_positions = ( 2.*np.random.random_sample((self.n_agents,2)) - 1.).tolist()
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount) for i,sp in enumerate(start_positions) ]
 			
 
 		self.fire_events = [ fire.extinguish_event for fire in self.fires  ]	
@@ -410,7 +404,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		self.simpy_env.process( max_simtime_trigger(self.simpy_env, self.max_simtime_event) )
 
 		# Step with a hold at start locations
-		return self.step( [ 5 ] * NUM_AGENTS  )[0]
+		return self.step( [ 5 ] * self.n_agents  )[0]
 
 	def step(self, actions):
 
@@ -439,7 +433,8 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		# check if any fires triggered
 		fires_extinguished = who_triggered(self.fire_events)
 		for i in fires_extinguished:
-			agents_to_act = [True] * self.n_agents # maybe make this just agents in its interest party?
+			for a in self.fires[i].interest_party:
+				agents_to_act[a.id_num] = True
 			self.fires[i].extinguish()
 
 		done = False
@@ -514,16 +509,20 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		return
 
 
+
 ENV_OPTIONS = [
-	# ('n_walkers', int, 2, ''),
-	# ('position_noise', float, 1e-3, ''),
-	# ('angle_noise', float, 1e-3, ''),
-	# ('reward_mech', str, 'local', ''),
-	# ('forward_reward', float, 1.0, ''),
-	# ('fall_reward', float, -100.0, ''),
-	# ('drop_reward', float, -100.0, ''),
-	# ('terminate_on_fall', int, 1, ''),
-	# ('buffer_size', int, 1, ''),
+	('n_agents', int, 3, ''),
+	('n_fires' , int, 6, ''),
+	('num_fires_of_each_size', list, [2,2,2], ''),
+	('fire_locations', list, None, ''),
+	('start_positions', list, None, ''),
+	('gamma', float, GAMMA, ''),
+	('GRID_LIM', float, 1.0, ''),
+	('MAX_SIMTIME', float, MAX_SIMTIME, ''),
+	('UAV_VELOCITY', float, UAV_VELOCITY, ''),
+	('HOLD_TIME', float, HOLD_TIME, ''),
+	('UAV_MINS_AVG', float, UAV_MINS_AVG, ''),
+	('UAV_MINS_STD', float, UAV_MINS_STD, '')
 ]
 
 from FirestormProject.runners import RunnerParser
@@ -535,119 +534,17 @@ if __name__ == "__main__":
 
 	mode = parser._mode
 	args = parser.args
-	env =  FireExtinguishingEnv()
+
+	assert args.n_fires >= 5, 'Need 5 or more fires'
+	assert args.n_fires == sum(args.num_fires_of_each_size), 'Not exactly as many fires of each size as available fires'
+
+	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
+								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
+				 				fire_locations = args.fire_locations, start_positions = args.start_positions)
 
 	run = RLLabRunner(env, args)
 
 	run()
-
-	# from eventdriven.EDhelpers import ed_dec_rollout, variable_discount_cumsum
-
-
-	# print('Smart Policy')
-
-	# from fire_smdp_params import test_policy_smarter
-	# agents = test_policy_smarter()
-
-	# average_discounted_rewards = []
-
-	# for i in range(10):
-	# 	paths = ed_dec_rollout(env, agents)
-	# 	for path in paths:
-	# 		t_sojourn = path["offset_t_sojourn"]
-	# 		discount_gamma = np.exp(-GAMMA*t_sojourn)
-	# 		path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-	# 		average_discounted_rewards.append(path["returns"][0])
-
-	# 	print('Iteration: ', i)
-	# 	print(len(average_discounted_rewards))
-	# 	print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
-
-	# print('Stupid Policy')
-	
-	# from fire_smdp_params import test_policy_stupid 
-	# agents = test_policy_stupid()
-
-	# average_discounted_rewards = []
-
-	# for i in range(10):
-	# 	paths = ed_dec_rollout(env, agents)
-	# 	for path in paths:
-	# 		t_sojourn = path["offset_t_sojourn"]
-	# 		discount_gamma = np.exp(-GAMMA*t_sojourn)
-	# 		path["returns"] = variable_discount_cumsum(path["rewards"], discount_gamma)
-	# 		average_discounted_rewards.append(path["returns"][0])
-
-	# 	print('Iteration: ', i)
-	# 	print(len(average_discounted_rewards))
-	# 	print(np.mean(average_discounted_rewards), np.std(average_discounted_rewards))
-
-
-	# quit()
-	
-
-	# from sandbox.rocky.tf.policies.categorical_mlp_policy import CategoricalMLPPolicy
-	# from sandbox.rocky.tf.policies.categorical_gru_policy import CategoricalGRUPolicy
-	# from sandbox.rocky.tf.core.network import MLP
-	# from sandbox.rocky.tf.envs.base import TfEnv
-	# from sandbox.rocky.tf.algos.trpo import TRPO
-	# from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
-	# from eventdriven.EDhelpers import GSMDPBatchSampler, GSMDPCategoricalGRUPolicy, GSMDPGaussianGRUPolicy
-	# from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import (ConjugateGradientOptimizer,
-	# 																  FiniteDifferenceHvp)
-	# import tensorflow as tf
-
-	# import rllab.misc.logger as logger
-
-	# env = FireExtinguishingEnv()
-	# env = TfEnv(env)
-
-
-	# # Logger
-	# Look at __init__ for default params and viz folder for loading policy
-	# default_log_dir = './FirestormProject/FireExtinguishing/Logs'
-	# exp_name = 'DistObs_WithGamma_3U6F_GRU'
-
-	# log_dir = osp.join(default_log_dir, exp_name)
-
-	# tabular_log_file = osp.join(log_dir, 'progress.csv')
-	# text_log_file = osp.join(log_dir, 'debug.log')
-	# params_log_file = osp.join(log_dir, 'params.json')
-
-	# # logger.log_parameters_lite(params_log_file, args)
-	# logger.add_text_output(text_log_file)
-	# logger.add_tabular_output(tabular_log_file)
-	# prev_snapshot_dir = logger.get_snapshot_dir()
-	# prev_mode = logger.get_snapshot_mode()
-	# logger.set_snapshot_dir(log_dir)
-	# logger.set_snapshot_mode('all')
-	# logger.set_log_tabular_only(False)
-	# logger.push_prefix("[%s] " % exp_name)
-
-	# feature_network = MLP(name='feature_net', input_shape=(
-	# 				env.spec.observation_space.flat_dim + env.spec.action_space.flat_dim,),
-	# 									output_dim=32,
-	# 									hidden_nonlinearity=tf.nn.tanh,
-	# 									hidden_sizes=(32, 32), output_nonlinearity=None)
-
-	# policy = GSMDPCategoricalGRUPolicy(feature_network = feature_network, env_spec=env.spec, name = "policy")
-	# # policy = CategoricalMLPPolicy(env_spec=env.spec, name = "policy")
-	# baseline = LinearFeatureBaseline(env_spec=env.spec)
-	# algo = TRPO(
-	# 	env=env,
-	# 	policy=policy,
-	# 	baseline=baseline,
-	# 	n_itr=750,
-	# 	max_path_length=100000,
-	# 	batch_size = 20000,
-	# 	discount=GAMMA,
-	# 	gae_lambda = LAMBDA,
-	# 	optimizer=ConjugateGradientOptimizer(
- #                                 hvp_approach=FiniteDifferenceHvp(base_eps=1e-5)),
-	# 	sampler_cls = GSMDPBatchSampler
-	# )
-
-	# algo.train()
 
 
 

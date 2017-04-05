@@ -25,7 +25,7 @@ def get_arch(name):
 
 def comma_sep_ints(s):
     if s:
-        return map(int, s.split(","))
+        return list(map(int, s.split(",")))
     else:
         return []
 
@@ -82,7 +82,7 @@ class RunnerParser(object):
 
         parser.add_argument('--max_path_length', type=int, default=500)
         parser.add_argument('--batch_size', type=int, default=12000)
-        parser.add_argument('--n_parallel', type=int, default=1)
+        parser.add_argument('--n_parallel', type=int, default= 4)
 
         parser.add_argument('--epoch_length', type=int, default=1000)
         parser.add_argument('--min_pool_size', type=int, default=10000)

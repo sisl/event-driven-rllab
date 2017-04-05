@@ -32,13 +32,15 @@ class AbstractMAEnv(object):
         env._unwrapped = None
         return env
 
+    def setup(self):
+        pass
+
     def seed(self, seed=None):
         return []
 
     @property
     def agents(self):
         """Returns the agents in the environment. List of objects inherited from Agent class
-
         Should give us information about cooperating and competing agents?
         """
         raise NotImplementedError()
@@ -57,6 +59,11 @@ class AbstractMAEnv(object):
     @property
     def is_terminal(self):
         raise NotImplementedError()
+
+    def set_param_values(self, lut):
+        for k, v in lut.items():
+            setattr(self, k, v)
+        self.setup()
 
     def render(self, *args, **kwargs):
         raise NotImplementedError()
@@ -81,7 +88,7 @@ class AbstractMAEnv(object):
         rew = np.zeros((len(self.agents)))
         traj_info_list = []
         for step in range(nsteps):
-            a = map(lambda afn, o: afn(o), act_fn, obs)
+            a = list(map(lambda afn, o: afn(o), act_fn, obs))
             obs, r, done, info = self.step(a)
             rew += r
             if info:
@@ -99,10 +106,6 @@ class AbstractMAEnv(object):
 
         traj_info = stack_dict_list(traj_info_list)
         return rew, traj_info
-
-    def update_curriculum(self, itr):
-        """Updates curriculum learning parameters"""
-        return
 
     @property
     def unwrapped(self):
@@ -151,7 +154,7 @@ class ObservationBuffer(AbstractMAEnv):
         aglist = []
         for agid, agent in enumerate(self._unwrapped.agents):
             if isinstance(agent.observation_space, spaces.Box):
-                newobservation_space = spaces.Box(low=agent.observation_space.low[0],
+                newobservation_space = spaces.Box(low=ent.observation_space.low[0],
                                                   high=agent.observation_space.high[0],
                                                   shape=self._buffer[agid].shape)
             # elif isinstance(agent.observation_sapce, spaces.Discrete):
@@ -309,9 +312,10 @@ class StandardizedEnv(AbstractMAEnv, EzPickle):
 
 class DiagnosticsWrapper(AbstractMAEnv, EzPickle):
 
-    def __init__(self, env, discount=0.99, log_interval=501):
+    def __init__(self, env, discount=0.99, max_traj_len=500, log_interval=501):
         self._unwrapped = env
         self._discount = discount
+        self._max_traj_len = max_traj_len
         self._episode_time = time.time()
         self._last_time = time.time()
         self._local_t = 0
@@ -346,7 +350,7 @@ class DiagnosticsWrapper(AbstractMAEnv, EzPickle):
             self._episode_length += 1
             self._all_rewards.append(rewardlist)
 
-        if done:
+        if done or self._episode_length >= self._max_traj_len:
             total_time = time.time() - self._episode_time
             for agid, epr in enumerate(self._episode_reward):
                 to_log['global/episode_reward_agent{}'.format(agid)] = epr
@@ -379,6 +383,9 @@ class DiagnosticsWrapper(AbstractMAEnv, EzPickle):
     @property
     def agents(self):
         return self._unwrapped.agents
+
+    def set_param_values(self, lut):
+        self._unwrapped.set_param_values(lut)
 
 
 def _discount_sum(x, discount):

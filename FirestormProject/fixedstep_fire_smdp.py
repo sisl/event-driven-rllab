@@ -47,7 +47,7 @@ HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
 
-DT = 0.1 # Time-step
+DT = 1. # Time-step
 
 PRINTING = False
 FIRE_DEBUG = False
@@ -467,6 +467,9 @@ class FixedStepFireExtinguishingEnv(AbstractMAEnv, EzPickle):
 	def terminate(self):
 		return
 
+	def get_param_values(self):
+		return self.__dict__
+
 
 
 ENV_OPTIONS = [
@@ -500,7 +503,7 @@ if __name__ == "__main__":
 
 	env =  FixedStepFireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
 								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
-				 				fire_locations = args.fire_locations, start_positions = args.start_positions)
+								fire_locations = args.fire_locations, start_positions = args.start_positions)
 
 	run = RLLabRunner(env, args)
 

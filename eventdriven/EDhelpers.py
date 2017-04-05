@@ -172,30 +172,30 @@ def sample_paths(
 			parallel_sampler._worker_set_env_params,
 			[(env_params, scope)] * singleton_pool.n_parallel
 		)
-	return singleton_pool.run_collect(
+	return [path for paths in singleton_pool.run_collect(
 		#_worker_collect_one_path,
 		_worker_collect_path_one_env,
 		threshold=max_samples,
 		args=(max_path_length, scope),
 		show_prog_bar=True
-	)
+	) for path in paths]
 
 
 ## GSMDPSampler
 #  Subclass of sampler, superclass of GSMDPBatchSampler
 
 def variable_discount_cumsum(x,discount):
-    # Same as discounted cumsum but uses different discount rate for each step
-    # y[t] = x[t] + discount[t] * y[y+1], y[N] = x[N]
-    x = x[::-1]
-    discount = discount[::-1]
-    y = np.zeros(x.shape)
-    for i in range(x.shape[0]):
-        if(i==0):
-            y[i] = x[i]
-        else:
-            y[i] = x[i] + discount[i]*y[i-1]
-    return y[::-1]
+	# Same as discounted cumsum but uses different discount rate for each step
+	# y[t] = x[t] + discount[t] * y[y+1], y[N] = x[N]
+	x = x[::-1]
+	discount = discount[::-1]
+	y = np.zeros(x.shape)
+	for i in range(x.shape[0]):
+		if(i==0):
+			y[i] = x[i]
+		else:
+			y[i] = x[i] + discount[i]*y[i-1]
+	return y[::-1]
 
 from rllab.sampler.base import Sampler
 
@@ -359,28 +359,66 @@ class GSMDPSampler(Sampler):
 
 ## GSMDPBatchSampler
 # Subclass of GSMDPBatchSampler, passed to rllab algo
+import tensorflow as tf
+def worker_init_tf(G):
+	G.sess = tf.Session()
+	G.sess.__enter__()
+
+
+def worker_init_tf_vars(G):
+	G.sess.run(tf.initialize_all_variables())
+
 class GSMDPBatchSampler(GSMDPSampler):
-	def __init__(self, algo):
-		"""
-		:type algo: BatchPolopt
-		"""
-		self.algo = algo
+	# def __init__(self, algo):
+	# 	"""
+	# 	:type algo: BatchPolopt
+	# 	"""
+	# 	self.algo = algo
+
+	# def start_worker(self):
+	# 	parallel_sampler.populate_task(self.algo.env, self.algo.policy, scope=self.algo.scope)
+
+	# def shutdown_worker(self):
+	# 	parallel_sampler.terminate_task(scope=self.algo.scope)
+
+	# def obtain_samples(self, itr):
+	# 	cur_params = self.algo.policy.get_param_values()
+	# 	paths = sample_paths(
+	# 		policy_params=cur_params,
+	# 		max_samples=self.algo.batch_size,
+	# 		max_path_length=self.algo.max_path_length,
+	# 		scope=self.algo.scope,
+	# 	)
+	# 	paths = list(itertools.chain.from_iterable(paths))
+	# 	if self.algo.whole_paths:
+	# 		return paths
+	# 	else:
+	# 		paths_truncated = parallel_sampler.truncate_paths(paths, self.algo.batch_size)
+	# 		return paths_truncated
 
 	def start_worker(self):
-		parallel_sampler.populate_task(self.algo.env, self.algo.policy, scope=self.algo.scope)
+		if singleton_pool.n_parallel > 1:
+			singleton_pool.run_each(worker_init_tf)
+		parallel_sampler.populate_task(self.algo.env, self.algo.policy)
+		if singleton_pool.n_parallel > 1:
+			singleton_pool.run_each(worker_init_tf_vars)
 
 	def shutdown_worker(self):
 		parallel_sampler.terminate_task(scope=self.algo.scope)
 
 	def obtain_samples(self, itr):
-		cur_params = self.algo.policy.get_param_values()
+		cur_policy_params = self.algo.policy.get_param_values()
+		if hasattr(self.algo.env,"get_param_values"):
+			cur_env_params = self.algo.env.get_param_values()
+		else:
+			cur_env_params = None
 		paths = sample_paths(
-			policy_params=cur_params,
+			policy_params=cur_policy_params,
+			env_params=cur_env_params,
 			max_samples=self.algo.batch_size,
 			max_path_length=self.algo.max_path_length,
 			scope=self.algo.scope,
 		)
-		paths = list(itertools.chain.from_iterable(paths))
 		if self.algo.whole_paths:
 			return paths
 		else:

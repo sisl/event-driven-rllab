@@ -508,6 +508,10 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 	def terminate(self):
 		return
 
+	def get_param_values(self):
+		return self.__dict__
+
+
 
 
 ENV_OPTIONS = [

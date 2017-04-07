@@ -17,7 +17,6 @@ from scipy.stats import truncnorm
 #from gym import spaces
 from rllab.spaces import Box, Discrete
 # from sandbox.rocky.tf.spaces import Box, Discrete
-import simpy
 
 
 from gym.utils import colorize, seeding
@@ -47,7 +46,7 @@ HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
 
-DT = 1. # Time-step
+DT = 10**(-0.5) # Time-step
 
 PRINTING = False
 FIRE_DEBUG = False
@@ -333,8 +332,6 @@ class FixedStepFireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 	def reset(self):
 
-		self.simpy_env = None
-
 		fire_levels = []
 		for i, n in enumerate(self.num_fires_of_each_size):
 			fire_levels += [i+1] * n
@@ -424,7 +421,6 @@ class FixedStepFireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 		if(PRINTING): print('Obs: ', obs)
 		if(PRINTING): print('Reward: ', rewards)
-
 
 		return obs, rewards, done, {}
 

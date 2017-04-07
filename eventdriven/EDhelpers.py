@@ -80,6 +80,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 				agent_infos[i].append(agent_info_list[ind])
 
 		# take next actions
+
 		next_olist, rlist, d, env_info = env.step(np.asarray(next_actions))
 
 		# update sojourn time (we should associate ts from next_olist to r, not current)
@@ -123,6 +124,16 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	agent_infos = [i for i in agent_infos if len(i) > 0]
 	env_infos = [e for e in env_infos if len(e) > 0]
 
+	if(any( map( lambda x: x < n_agents, 
+		[len(observations), len(actions), len(rewards), len(agent_infos), len(env_infos)]))):
+		print('\nWARNING: \n')
+		print('n_agents: ', n_agents)
+		print('len(observations): ', len(observations))
+		print('len(actions): ', len(actions))
+		print('len(rewards): ', len(rewards))
+		print('len(agent_infos): ', len(agent_infos))
+		print('len(env_infos): ', len(env_infos))
+
 
 	return [
 		dict(
@@ -131,7 +142,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			rewards=tensor_utils.stack_tensor_list(rewards[i]),
 			agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos[i]),
 			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),
-			offset_t_sojourn=tensor_utils.stack_tensor_list(offset_t_sojourn[i]),) for i in range(n_agents)
+			offset_t_sojourn=tensor_utils.stack_tensor_list(offset_t_sojourn[i]),) for i in range(len(observations))
 	]
 
 ## Parallel Sampler functions
@@ -172,6 +183,7 @@ def sample_paths(
 			parallel_sampler._worker_set_env_params,
 			[(env_params, scope)] * singleton_pool.n_parallel
 		)
+	print('got past run_each')
 	return [path for paths in singleton_pool.run_collect(
 		#_worker_collect_one_path,
 		_worker_collect_path_one_env,
@@ -369,32 +381,6 @@ def worker_init_tf_vars(G):
 	G.sess.run(tf.initialize_all_variables())
 
 class GSMDPBatchSampler(GSMDPSampler):
-	# def __init__(self, algo):
-	# 	"""
-	# 	:type algo: BatchPolopt
-	# 	"""
-	# 	self.algo = algo
-
-	# def start_worker(self):
-	# 	parallel_sampler.populate_task(self.algo.env, self.algo.policy, scope=self.algo.scope)
-
-	# def shutdown_worker(self):
-	# 	parallel_sampler.terminate_task(scope=self.algo.scope)
-
-	# def obtain_samples(self, itr):
-	# 	cur_params = self.algo.policy.get_param_values()
-	# 	paths = sample_paths(
-	# 		policy_params=cur_params,
-	# 		max_samples=self.algo.batch_size,
-	# 		max_path_length=self.algo.max_path_length,
-	# 		scope=self.algo.scope,
-	# 	)
-	# 	paths = list(itertools.chain.from_iterable(paths))
-	# 	if self.algo.whole_paths:
-	# 		return paths
-	# 	else:
-	# 		paths_truncated = parallel_sampler.truncate_paths(paths, self.algo.batch_size)
-	# 		return paths_truncated
 
 	def start_worker(self):
 		if singleton_pool.n_parallel > 1:
@@ -408,7 +394,7 @@ class GSMDPBatchSampler(GSMDPSampler):
 
 	def obtain_samples(self, itr):
 		cur_policy_params = self.algo.policy.get_param_values()
-		if hasattr(self.algo.env,"get_param_values"):
+		if hasattr(self.algo.env,"get_param_values") and False:
 			cur_env_params = self.algo.env.get_param_values()
 		else:
 			cur_env_params = None

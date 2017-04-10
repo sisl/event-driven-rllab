@@ -26,6 +26,8 @@ from eventdriven.madrl_environments import AbstractMAEnv, Agent
 
 from eventdriven.rltools.util import EzPickle
 
+from eventdriven.EDhelpers import SimPyRollout
+
 from rllab.envs.env_spec import EnvSpec
 
 import pdb
@@ -55,46 +57,31 @@ FIRE_DEBUG = False
 ## --- SIMPY FUNCTIONS
 
 
-# Triggers event for when the maximum simulation time has been reached
-def max_simtime_trigger(env, event):
-	yield env.timeout(MAX_SIMTIME)
-	if(PRINTING): print('Max simtime reached')
-	event.succeed()
-
-def timeout(env, event, time_out):
-	yield env.timeout(time_out)
-	event.succeed()
-
-def who_triggered(event_list):
-	output = [False] * len(event_list)
-	for i,e in enumerate(event_list):
-		try:
-			if(e.ok):
-				output[i] = True
-		except(AttributeError):
-			pass
-	return [i for i, x in enumerate(output) if x]
-
 def within_epsilon(arr1,arr2):
 	return np.linalg.norm( np.array(arr1) - np.array(arr2) ) < 0.001
 
 def distance(arr1,arr2):
 	return float(np.linalg.norm(np.array(arr1) - np.array(arr2)))
 
-def obs_to_ith_loc(obs, i, n_agents):
-	out = [ [None] ] * n_agents
-	out[i] = obs
-	return out
-
 ## --- ED Env
 
 class UAV(Agent):
 
-	def __init__(self, env, simpy_env, id_num, start_position, goal_position, gamma):
+	def __init__(self, env, simpy_env, id_num, start_position, goal_position, gamma, policy):
 		self.env = env
 		self.simpy_env = simpy_env
 		self.id_num = id_num
 		self.gamma = gamma
+		self.policy = policy
+
+		self.observations = []
+		self.actions = []
+		self.rewards = []
+		self.agent_infos = []
+		self.env_infos = []
+		self.offset_t_sojourn = []
+
+		# Fire Extinguishing specific stuff
 
 		self.start_position = start_position
 		self.goal_position = goal_position
@@ -110,6 +97,80 @@ class UAV(Agent):
 		self.fire_interested = -1
 
 		return
+
+	def sim(self):
+
+		obs = self.get_obs()
+
+		while(True and not self.env.done):
+
+			action, agent_info = self.policy(obs)
+
+
+			self.action_event = self.simpy_env.process(self.take_action(action))
+			try:
+				yield self.action_event
+			except simpy.Interrupt:
+				pass
+
+			reward = self.get_reward()
+
+			self.observations.append(self.env.observation_space.flatten(obs))
+			self.actions.append(self.env.action_space.flatten(action))
+			self.rewards.append(reward)
+			self.agent_infos.append(agent_info)
+			self.env_infos.append({})
+
+			obs = self.get_obs()
+			self.offset_t_sojourn.append(self.env.observation_space.flatten(obs)[-1])
+
+	def take_action(self, action):
+
+		self.start_position = copy.deepcopy(self.current_position)
+		self.action_time = self.simpy_env.now
+
+		# leave any interest party you were in
+		if(self.fire_interested != -1):
+			self.env.fires[self.fire_interested].leave_interest_party(self)
+			self.fire_interested = -1
+
+		hold_current = False
+		new_goal = None
+
+		if action >= 5:
+			# want to hold
+			hold_current = True
+			self.goal_position = copy.deepcopy(self.start_position)
+			if(PRINTING): print('UAV %d holding at (%.2f, %.2f)' % (self.id_num, self.current_position[0], self.current_position[1]))
+			# If we're at a fire, join its extinguish party
+			for i, f in enumerate(self.env.fires):
+				if within_epsilon(self.current_position, f.location):
+					f.join_interest_party(self)
+					self.fire_interested = i
+					if(self.fire_attacking != i):
+						f.join_extinguish_party(self)
+						self.fire_attacking = i
+					break
+
+			yield self.simpy_env.timeout(HOLD_TIME)
+
+		else:
+			# assign new goal location, fire interest
+			fire_ind = self.action_map[action]
+			self.env.fires[fire_ind].join_interest_party(self)
+			self.fire_interested = fire_ind
+			new_goal = copy.deepcopy(self.env.fires[fire_ind].location)
+			# stop attacking any fire you are attacking
+			if(self.fire_attacking > -1):
+				self.env.fires[self.fire_attacking].leave_extinguish_party(self)
+			
+			self.goal_position = copy.deepcopy(new_goal)
+			travel_time = np.linalg.norm( np.array(self.goal_position) - np.array(self.start_position) ) / UAV_VELOCITY
+			if(PRINTING): print('UAV %d is heading from (%.2f, %.2f) to (%.2f, %.2f)' % 
+				(self.id_num, self.start_position[0], self.start_position[1], self.goal_position[0], self.goal_position[1] ))
+
+			yield self.simpy_env.timeout(travel_time)			
+
 
 	@property
 	def time_since_action(self):
@@ -153,54 +214,6 @@ class UAV(Agent):
 	def accrue_reward(self, reward):
 		self.accrued_reward += exp(-self.time_since_action * self.gamma) * reward
 
-	# Difference from simpy_fire_smdp: new_goal is now a index into using self.fire_indicies
-	def change_goal(self, hold_current = False, new_goal = None):
-
-		# leave any interest party you were in
-		if(self.fire_interested != -1):
-			self.env.fires[self.fire_interested].leave_interest_party(self)
-			self.fire_interested = -1
-
-		if new_goal is None:
-			new_goal = copy.deepcopy(self.goal_position)
-		else:
-			# assign new goal location, fire interest
-			fire_ind = self.action_map[new_goal]
-			self.env.fires[fire_ind].join_interest_party(self)
-			self.fire_interested = fire_ind
-			new_goal = copy.deepcopy(self.env.fires[fire_ind].location)
-
-		event = simpy.Event(self.simpy_env)
-		if not hold_current:
-			# stop attacking any fire you are attacking
-			if(self.fire_attacking > -1):
-				self.env.fires[self.fire_attacking].leave_extinguish_party(self)
-				self.fire_attacking = -1
-			self.start_position = copy.deepcopy(self.current_position)
-			self.goal_position = copy.deepcopy(new_goal)
-			travel_time = np.linalg.norm( np.array(self.goal_position) - np.array(self.start_position) ) / UAV_VELOCITY
-			self.simpy_env.process(timeout(self.simpy_env, event, travel_time))
-			if(PRINTING): print('UAV %d is heading from (%.2f, %.2f) to (%.2f, %.2f)' % 
-				(self.id_num, self.start_position[0], self.start_position[1], self.goal_position[0], self.goal_position[1] ))
-		else:
-			# Holding
-			self.start_position = copy.deepcopy(self.current_position)
-			self.goal_position = copy.deepcopy(self.start_position)
-			self.simpy_env.process(timeout(self.simpy_env, event, HOLD_TIME))
-			if(PRINTING): print('UAV %d holding at (%.2f, %.2f)' % (self.id_num, self.current_position[0], self.current_position[1]))
-			# If we're at a fire, join its extinguish party
-			for i, f in enumerate(self.env.fires):
-				if within_epsilon(self.current_position, f.location):
-					f.join_interest_party(self)
-					self.fire_interested = i
-					if(self.fire_attacking != i):
-						f.join_extinguish_party(self)
-						self.fire_attacking = i
-					break
-		self.env.uav_events[self.id_num] = event
-		self.action_time = self.simpy_env.now
-		return event
-
 
 	@property
 	def observation_space(self):
@@ -235,11 +248,12 @@ class Fire(object):
 		self.id_num = id_num
 		self.location = location
 		self.status = True
-		self.extinguish_event = simpy.Event(self.simpy_env) # Gets triggered when the fire is extinguished
 		self.extinguish_party = [] # Number of agents trying to extinguish the fire
 		self.prev_len_extinguish_party = 0
 		self.last_update_time = simpy_env.now
 		self.interest_party = []
+		self.extinguish_event = None
+
 		self.time_until_extinguish = np.inf
 
 		self.level = level
@@ -250,6 +264,20 @@ class Fire(object):
 
 		if(PRINTING or FIRE_DEBUG):
 			print('Fire %d has a %.2f UAV seconds left' % (self.id_num, self.uav_seconds_left))
+
+
+	def sim(self):
+		while(True):
+			try:
+				self.extinguish_event = self.simpy_env.process(self.try_to_extinguish())
+				yield self.extinguish_event
+				self.extinguish()
+				break
+			except simpy.Interrupt:
+				continue
+
+	def try_to_extinguish(self):
+		yield self.simpy_env.timeout(self.time_until_extinguish)
 
 	@property
 	def uavsecondsleft(self):
@@ -281,14 +309,13 @@ class Fire(object):
 		self.uav_seconds_left -= decrement
 
 		# update event with new time remaining and new party size
-		event = simpy.Event(self.simpy_env)
 		time_to_extinguish = self.uav_seconds_left / party_size if party_size > 0 else np.inf
-		self.simpy_env.process(timeout(self.simpy_env, event, time_to_extinguish))
-		self.extinguish_event = event
 		self.time_until_extinguish = time_to_extinguish
-
-		# update the event in main env
-		self.env.fire_events[self.id_num] = self.extinguish_event
+		# try:
+		# 	self.extinguish_event.interrupt()
+		# except RuntimeError:
+		# 	pass
+		self.extinguish_event.interrupt()
 
 		if(FIRE_DEBUG):
 			print('Fire %d has extinguish party size %d and %.2f UAV seconds left at time %.2f' %
@@ -314,9 +341,8 @@ class Fire(object):
 		if uav not in self.extinguish_party: 
 			if(PRINTING): print('UAV %d is joining Fire %d extinguishing party at %.2f' % (uav.id_num, self.id_num, self.simpy_env.now))
 			self.extinguish_party.append(uav)
-		self.update_extinguish_time()
-		if(PRINTING): print('Fire %d time to extinguish is %.2f' % (self.id_num, self.time_until_extinguish))
-		return self.extinguish_event
+		if(self.status):
+			self.update_extinguish_time()
 
 	def leave_extinguish_party(self, uav):
 		
@@ -326,9 +352,8 @@ class Fire(object):
 		if uav in self.extinguish_party: 
 			if(PRINTING): print('UAV %d is leaving Fire %d extinguishing party at %.2f' % (uav.id_num, self.id_num, self.simpy_env.now))
 			self.extinguish_party.remove(uav)
-		self.update_extinguish_time()
-		if(PRINTING): print('Fire %d time to extinguish is %.2f' % (self.id_num, self.time_until_extinguish))
-		return self.extinguish_event
+		if(self.status):
+			self.update_extinguish_time()
 
 	def extinguish(self):
 		self.status = False
@@ -338,11 +363,18 @@ class Fire(object):
 			# else:
 			# 	a.accrue_reward(self.reward)
 			a.accrue_reward(self.reward)
+		# Interrupt action for all agents in your interest party
+		for a in self.interest_party:
+			try:
+				a.action_event.interrupt()
+			except RuntimeError:
+				pass
+
 		# set event to one that never triggers
-		self.extinguish_event = simpy.Event(self.simpy_env)
-		self.env.fire_events[self.id_num] = self.extinguish_event
 		self.time_until_extinguish = -1
 		if(PRINTING or FIRE_DEBUG): print('Fire %d extinguished at %.2f' % (self.id_num, self.simpy_env.now))
+		# succeed death event
+		self.env.fire_extinguish_events[self.id_num].succeed()
 		return
 
 
@@ -350,7 +382,7 @@ class Fire(object):
 
 
 
-class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
+class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 
 	def __init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
@@ -373,13 +405,17 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 		self.simpy_env = None
 		self.uav_events = [] # checks if a UAV needs to act
 		self.fire_events = [] # checks if a fire was extinguished
+		self.done = False
 
 		self.seed()
-		self.reset()
 
 	def reset(self):
 
+		self.done = False
+
 		self.simpy_env = simpy.Environment()
+
+		self.fire_extinguish_events = [simpy.Event(self.simpy_env) for i in range(self.n_fires)]
 
 		fire_levels = []
 		for i, n in enumerate(self.num_fires_of_each_size):
@@ -395,84 +431,77 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 				for i, fl in enumerate(fire_locations)  ]
 
 		if self.start_positions is not None:
-			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount) for i,sp in enumerate(self.start_positions) ]
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, None) for i,sp in enumerate(self.start_positions) ]
 		else:
 			# we want to randomize
 			start_positions = ( 2.*np.random.random_sample((self.n_agents,2)) - 1.).tolist()
-			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount) for i,sp in enumerate(start_positions) ]
-			
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, None) for i,sp in enumerate(start_positions) ]
 
-		self.fire_events = [ fire.extinguish_event for fire in self.fires  ]	
-		self.uav_events = [simpy.Event(self.simpy_env) for _ in range(self.n_agents)]
-
-		self.max_simtime_event = simpy.Event(self.simpy_env)
-		self.simpy_env.process( max_simtime_trigger(self.simpy_env, self.max_simtime_event) )
-
-		# Step with a hold at start locations
-		return self.step( [ 5 ] * self.n_agents  )[0]
+		return
 
 	def step(self, actions):
 
-		# Takes an action set, outputs next observations, accumulated reward, done (boolean), info
+		raise NotImplementedError
 
-		# Convention is:
-		#   If an agent is to act on this event, pass an observation and accumulated reward,
-		#       otherwise, pass None
-		#       "obs" variable will look like: [ [None], [None], [o3_t], [None], [o5_t]  ]
-		#       "rewards" will look like:      [  None ,  None ,  r3_r ,  None ,  r5_t   ]
-		#   The action returned by the (decentralized) policy will look like
-		#                                      [  None ,  None ,  a3_t ,  None ,  a5_t   ]
+	def reset_and_sim(self, policies):
+		self.simpy_env = simpy.Environment()
 
-		for i, a in enumerate(actions):
-			if a is not None: 
-				if a >= 5:
-					# Agents wants to hold
-					self.env_agents[i].change_goal(hold_current = True)
-				else:
-					self.env_agents[i].change_goal(new_goal = a)
+		self.done = False
 
-		self.simpy_env.run(until = simpy.AnyOf(self.simpy_env, self.uav_events + self.fire_events + [self.max_simtime_event]))
+		self.fire_extinguish_events = [simpy.Event(self.simpy_env) for i in range(self.n_fires)]
 
+		fire_levels = []
+		for i, n in enumerate(self.num_fires_of_each_size):
+			fire_levels += [i+1] * n
 
-		agents_to_act = [False] * self.n_agents
-		# check if any fires triggered
-		fires_extinguished = who_triggered(self.fire_events)
-		for i in fires_extinguished:
-			for a in self.fires[i].interest_party:
-				agents_to_act[a.id_num] = True
-			self.fires[i].extinguish()
-
-		done = False
-		if(not any([f.status for f in self.fires])):
-			done = True
-
-		# check if any single agent triggered
-		uavs_to_act = who_triggered(self.uav_events)
-		for i in uavs_to_act:
-			agents_to_act[i] = True
-
-
-		# Get next_obs, rewards
-		try:
-			# Check if max_simtime_reached
-			self.max_simtime_event.ok
-			done = True
-		except(AttributeError):
-			pass
-		
-
-		if(done):
-			obs = [ e.get_obs() for e in self.env_agents  ]
-			rewards = [ e.get_reward() for e in self.env_agents ]
+		if self.fire_locations is not None:
+			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
+				for i, fl in enumerate(self.fire_locations)  ]
 		else:
-			obs = [ self.env_agents[i].get_obs() if w else [None] for i, w in enumerate(agents_to_act)  ]
-			rewards = [ self.env_agents[i].get_reward() if w else None for i, w in enumerate(agents_to_act)  ]
+			# we want to randomize
+			fire_locations = ( 2.*np.random.random_sample((self.n_fires,2)) - 1.).tolist()
+			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
+				for i, fl in enumerate(fire_locations)  ]
 
-		if(PRINTING): print('Obs: ', obs)
-		if(PRINTING): print('Reward: ', rewards)
+		if self.start_positions is not None:
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, policies[i]) for i,sp in enumerate(self.start_positions) ]
+		else:
+			# we want to randomize
+			start_positions = ( 2.*np.random.random_sample((self.n_agents,2)) - 1.).tolist()
+			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, policies[i]) for i,sp in enumerate(start_positions) ]
+			
+		# Process all UAVs
+		for uav in self.env_agents:
+			self.simpy_env.process( uav.sim() )
+		# Process all fires
+		for fire in self.fires:
+			self.simpy_env.process( fire.sim() )
 
+		done = simpy.AllOf(self.simpy_env, self.fire_extinguish_events)
 
-		return obs, rewards, done, {}
+		self.simpy_env.run(until = simpy.AnyOf(self.simpy_env, [done, self.simpy_env.timeout(MAX_SIMTIME)]) )
+
+		self.done = True
+
+		if(True):
+			for uav in self.env_agents:
+				try:
+					uav.action_event.interrupt()
+				except RuntimeError:
+					pass
+			self.simpy_env.run(until = self.simpy_env.now*(1.0001))
+
+		assert sum([uav.get_reward() for uav in self.env_agents]) == 0, 'There were unaccounted for rewards'
+
+		# Collect observations, actions, etc.. and return them
+		observations = [ u.observations for u in self.env_agents]
+		actions = [ u.actions for u in self.env_agents]
+		rewards = [ u.rewards for u in self.env_agents]
+		agent_infos = [ u.agent_infos for u in self.env_agents]
+		env_infos = [ u.env_infos for u in self.env_agents]
+		offset_t_sojourn = [ u.offset_t_sojourn for u in self.env_agents ]
+
+		return observations, actions, rewards, agent_infos, env_infos, offset_t_sojourn
 
 
 	@property
@@ -484,11 +513,20 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle):
 
 	@property
 	def observation_space(self):
-		return self.env_agents[0].observation_space
+
+		if self.env_agents[0] is not None:
+			return self.env_agents[0].observation_space
+		else:
+			self.reset()
+			return self.env_agents[0].observation_space
 
 	@property
 	def action_space(self):
-		return self.env_agents[0].action_space
+		if self.env_agents[0] is not None:
+			return self.env_agents[0].action_space
+		else:
+			self.reset()
+			return self.env_agents[0].action_space
 
 	def log_diagnostics(self, paths):
 		"""
@@ -551,14 +589,14 @@ if __name__ == "__main__":
 								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
 				 				fire_locations = args.fire_locations, start_positions = args.start_positions)
 
-	from FirestormProject.test_policy import path_discounted_returns
+	# from FirestormProject.test_policy import path_discounted_returns
 
-	print('Simpy Fire SMDP')
-	print(path_discounted_returns(env = env, num_traj = 200, gamma = GAMMA))
+	# print('Simpy Rollout Fire SMDP')
+	# print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
 
-	# run = RLLabRunner(env, args)
+	run = RLLabRunner(env, args)
 
-	# run()
+	run()
 
 
 

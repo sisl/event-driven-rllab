@@ -40,13 +40,13 @@ GRID_LIM = 1.0
 GAMMA = math.log(0.9)/(-5.)
 MAX_SIMTIME = math.log(0.005)/(-GAMMA)
 
-UAV_VELOCITY = 0.03 # m/s
+UAV_VELOCITY = 0.015 # m/s
 HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
 
-DT = 10**(-0.5) # Time-step
+DT = 10**(-1) # Time-step
 
 PRINTING = False
 FIRE_DEBUG = False
@@ -214,7 +214,6 @@ class Fire(object):
 		self.id_num = id_num
 		self.location = location
 		self.status = True
-		self.extinguish_event = simpy.Event(self.simpy_env) # Gets triggered when the fire is extinguished
 		self.extinguish_party = [] # Number of agents trying to extinguish the fire
 		self.prev_len_extinguish_party = 0
 		self.interest_party = []
@@ -267,7 +266,7 @@ class Fire(object):
 	def join_extinguish_party(self, uav):
 		if(not self.status):
 			# Extinguished already
-			return self.extinguish_event
+			return None
 		if uav not in self.extinguish_party: 
 			if(PRINTING): print('UAV %d is joining Fire %d extinguishing party at %.2f' % (uav.id_num, self.id_num, self.env.simtime))
 			self.extinguish_party.append(uav)
@@ -277,7 +276,7 @@ class Fire(object):
 		
 		if(not self.status):
 			# Extinguished already
-			return self.extinguish_event
+			return None
 		if uav in self.extinguish_party: 
 			if(PRINTING): print('UAV %d is leaving Fire %d extinguishing party at %.2f' % (uav.id_num, self.id_num, self.env.simtime))
 			self.extinguish_party.remove(uav)
@@ -285,6 +284,9 @@ class Fire(object):
 
 
 	def extinguish(self):
+		if(not self.status):
+			print('Fire was attempting to extinguish more than once')
+			return
 		self.status = False
 		for a in self.env.env_agents:
 			# if(a in self.extinguish_party):
@@ -292,6 +294,7 @@ class Fire(object):
 			# else:
 			# 	a.accrue_reward(self.reward)
 			a.accrue_reward(self.reward)
+		for a in self.interest_party:
 			a.need_new_action = True
 
 		self.time_until_extinguish = -1
@@ -501,9 +504,14 @@ if __name__ == "__main__":
 								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
 								fire_locations = args.fire_locations, start_positions = args.start_positions)
 
-	run = RLLabRunner(env, args)
+	from FirestormProject.test_policy import path_discounted_returns
 
-	run()
+	print('Fixed-Step %.3f' % (DT))
+	print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA))
+
+	# run = RLLabRunner(env, args)
+
+	# run()
 
 
 

@@ -123,6 +123,82 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 	rewards = [ r for r in rewards if len(r) > 0]
 	agent_infos = [i for i in agent_infos if len(i) > 0]
 	env_infos = [e for e in env_infos if len(e) > 0]
+	offset_t_sojourn = [o for o in offset_t_sojourn if len(o) > 0]
+
+	if(any( map( lambda x: x < n_agents, 
+		[len(observations), len(actions), len(rewards), len(agent_infos), len(env_infos)]))):
+		print('\nWARNING: \n')
+		print('n_agents: ', n_agents)
+		print('len(observations): ', len(observations))
+		print('len(actions): ', len(actions))
+		print('len(rewards): ', len(rewards))
+		print('len(agent_infos): ', len(agent_infos))
+		print('len(env_infos): ', len(env_infos))
+
+	return [
+		dict(
+			observations=tensor_utils.stack_tensor_list(observations[i]),
+			actions=tensor_utils.stack_tensor_list(actions[i]),
+			rewards=tensor_utils.stack_tensor_list(rewards[i]),
+			agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos[i]),
+			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),
+			offset_t_sojourn=tensor_utils.stack_tensor_list(offset_t_sojourn[i]),) for i in range(len(observations))
+	]
+
+
+## ed_simpy_dec_rollout
+# Adapts ed_dec_rollout for simpy environments
+
+def get_actions_wrapper(agents, i, n_agents, obs):
+	if(not agents.recurrent):
+		alist, agent_info_list = agents.get_actions([obs])
+		action = alist[0]
+		agent_info = tensor_utils.split_tensor_dict_list(agent_info_list)[0] if \
+			agent_info_list is not None else {}
+	else:
+		olist = [[None]]*n_agents
+		olist[i] = obs
+		alist, agent_info_list = agents.get_actions(olist)
+		action = alist[i]
+		agent_info = tensor_utils.split_tensor_dict_list(agent_info_list)[i] if \
+			agent_info_list is not None else {}
+
+	return action, agent_info
+
+
+
+def ed_simpy_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=1):
+	if(agents.recurrent):
+		assert isinstance(agents, GSMDPRecurrentPolicy), 'Recurrent policy is not a GSMDP class'
+
+	"""Decentralized rollout"""
+	n_agents = len(env.agents)
+	observations = [[] for _ in range(n_agents)]
+	actions = [[] for _ in range(n_agents)]
+	rewards = [[] for _ in range(n_agents)]
+	agent_infos = [[] for _ in range(n_agents)]
+	env_infos = [[] for _ in range(n_agents)]
+	offset_t_sojourn = [[] for _ in range(n_agents)]
+
+
+	agents.reset(dones=[True for _ in range(n_agents)])
+	agent_policies = [ None ] * n_agents
+	for i in range(n_agents):
+		agent_policies[i] = lambda obs: get_actions_wrapper(agents, i, n_agents, obs)
+		# if(not agents.recurrent):
+		# 	agent_policies[i] = lambda obs: agents.get_actions([obs])
+		# else:
+		# 	agent_policies[i] = lambda obs: agents.get_actions(obs_to_ith_loc(obs, i, n_agents))
+
+	observations, actions, rewards, agent_infos, env_infos, offset_t_sojourn = env.wrapped_env.reset_and_sim(agent_policies)
+
+	# remove empty agent trajectories
+	observations = [ o for o in observations if len(o) > 0]
+	actions = [ a for a in actions if len(a) > 0]
+	rewards = [ r for r in rewards if len(r) > 0]
+	agent_infos = [i for i in agent_infos if len(i) > 0]
+	env_infos = [e for e in env_infos if len(e) > 0]
+	offset_t_sojourn = [o for o in offset_t_sojourn if len(o) > 0]
 
 	if(any( map( lambda x: x < n_agents, 
 		[len(observations), len(actions), len(rewards), len(agent_infos), len(env_infos)]))):
@@ -135,6 +211,7 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 		print('len(env_infos): ', len(env_infos))
 
 
+
 	return [
 		dict(
 			observations=tensor_utils.stack_tensor_list(observations[i]),
@@ -144,6 +221,10 @@ def ed_dec_rollout(env, agents, max_path_length=np.inf, animated=False, speedup=
 			env_infos=tensor_utils.stack_tensor_dict_list(env_infos[i]),
 			offset_t_sojourn=tensor_utils.stack_tensor_list(offset_t_sojourn[i]),) for i in range(len(observations))
 	]
+
+## Dummy class for envs that need ed_simpy_dec_rollout
+class SimPyRollout():
+	pass
 
 ## Parallel Sampler functions
 # _worker_collect_path_one_env calls ed_dec_rollout
@@ -156,7 +237,10 @@ from rllab.misc import logger
 
 def _worker_collect_path_one_env(G, max_path_length, ma_mode, scope=None):
 	G = parallel_sampler._get_scoped_G(G, scope)
-	paths = ed_dec_rollout(G.env, G.policy, max_path_length)
+	if(isinstance(G.env.wrapped_env, SimPyRollout)):
+		paths = ed_simpy_dec_rollout(G.env, G.policy, max_path_length)
+	else:
+		paths = ed_dec_rollout(G.env, G.policy, max_path_length)
 	lengths = [len(path['rewards']) for path in paths]
 	return paths, sum(lengths)
 
@@ -183,7 +267,7 @@ def sample_paths(
 			parallel_sampler._worker_set_env_params,
 			[(env_params, scope)] * singleton_pool.n_parallel
 		)
-	print('got past run_each')
+
 	return [path for paths in singleton_pool.run_collect(
 		#_worker_collect_one_path,
 		_worker_collect_path_one_env,

@@ -212,7 +212,8 @@ class UAV(Agent):
 		return reward
 
 	def accrue_reward(self, reward):
-		self.accrued_reward += exp(-self.time_since_action * self.gamma) * reward
+		if(not self.env.done):
+			self.accrued_reward += exp(-self.time_since_action * self.gamma) * reward
 
 
 	@property
@@ -311,11 +312,10 @@ class Fire(object):
 		# update event with new time remaining and new party size
 		time_to_extinguish = self.uav_seconds_left / party_size if party_size > 0 else np.inf
 		self.time_until_extinguish = time_to_extinguish
-		# try:
-		# 	self.extinguish_event.interrupt()
-		# except RuntimeError:
-		# 	pass
-		self.extinguish_event.interrupt()
+		try:
+			self.extinguish_event.interrupt()
+		except RuntimeError:
+			pass
 
 		if(FIRE_DEBUG):
 			print('Fire %d has extinguish party size %d and %.2f UAV seconds left at time %.2f' %
@@ -589,14 +589,14 @@ if __name__ == "__main__":
 								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
 				 				fire_locations = args.fire_locations, start_positions = args.start_positions)
 
-	# from FirestormProject.test_policy import path_discounted_returns
+	from FirestormProject.test_policy import path_discounted_returns
 
-	# print('Simpy Rollout Fire SMDP')
-	# print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
+	print('Simpy Rollout Fire SMDP')
+	print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
 
-	run = RLLabRunner(env, args)
+	# run = RLLabRunner(env, args)
 
-	run()
+	# run()
 
 
 

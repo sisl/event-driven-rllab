@@ -58,8 +58,11 @@ from eventdriven.EDhelpers import variable_discount_cumsum, ed_dec_rollout, ed_s
 from numpy import std, mean
 from sandbox.rocky.tf.envs.base import TfEnv
 import time
+import progressbar
 
 def path_discounted_returns(env, gamma, num_traj, policy = test_policy(), simpy = False):
+	print('Env is of type ', type(env))
+	print('Policy is of type ', type(policy))
 	print('Simulating %d Rollouts...' % (num_traj))
 	start_time = time.time()
 
@@ -67,7 +70,9 @@ def path_discounted_returns(env, gamma, num_traj, policy = test_policy(), simpy 
 
 	paths = []
 	rollout_times = []
-	for i in range(num_traj):
+
+	bar = progressbar.ProgressBar()
+	for i in bar(range(num_traj)):
 		start_time_r = time.time()
 		if(simpy):
 			paths.append(ed_simpy_dec_rollout(env, policy))

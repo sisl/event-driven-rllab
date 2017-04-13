@@ -182,12 +182,13 @@ class UAV(Agent):
 			return copy.deepcopy(self.start_position)
 		# find unit vector in heading direction
 		unit_vec = np.array(self.goal_position) - np.array(self.start_position)
-		unit_vec /= np.linalg.norm(unit_vec)
+		dist_to_travel = np.linalg.norm(unit_vec)
+		unit_vec /= dist_to_travel
 
 		# find distance travelled
-		distance_travelled = self.time_since_action * UAV_VELOCITY
+		distance_travelled = min(self.time_since_action * UAV_VELOCITY,dist_to_travel)
 
-		return (np.array(self.start_position) + unit_vec * distance_travelled  ).tolist()
+		return ( np.array(self.start_position) + unit_vec * distance_travelled ).tolist()
 
 	def get_obs(self):
 		obs = copy.deepcopy(self.current_position) # own position
@@ -591,12 +592,66 @@ if __name__ == "__main__":
 
 	from FirestormProject.test_policy import path_discounted_returns
 
-	print('Simpy Rollout Fire SMDP')
-	print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
+	# print('Simpy Rollout Fire SMDP')
+	# print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
 
 	# run = RLLabRunner(env, args)
 
 	# run()
+
+	## Test all learned policies on simpy env
+
+	import tensorflow as tf
+	import joblib
+
+	num_trajs_sim = 500
+
+	with tf.Session() as sess:
+		obj = joblib.load('./data/experiment_2017_04_10_11_21_38_simpy_rollout/itr_149.pkl')
+		policy = obj['policy']
+		print('ED Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
+		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_23_27_23_fixed_10e-1/itr_149.pkl')
+		policy = obj['policy']
+		print('Fixed-Step 0.1 Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
+		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_22_13_22_fixed_10e-0p5/itr_149.pkl')
+		policy = obj['policy']
+		print('Fixed-Step 0.32 Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
+		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_21_44_55_fixed_10e0/itr_149.pkl')
+		policy = obj['policy']
+		print('Fixed-Step 1.0 Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
+		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_20_42_19_fixed_10e0p5/itr_149.pkl')
+		policy = obj['policy']
+		print('Fixed-Step 3.2 Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
+		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_18_44_35_fixed_10e1/itr_149.pkl')
+		policy = obj['policy']
+		print('Fixed-Step 10.0 Learned Policy')
+		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+
 
 
 

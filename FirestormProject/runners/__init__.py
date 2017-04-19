@@ -33,7 +33,7 @@ def comma_sep_ints(s):
 class RunnerParser(object):
 
     DEFAULT_OPTS = [
-        ('discount', float, 0.02, ''),
+        # ('discount', float, 0.02, ''),
         ('gae_lambda', float, 1.0, ''),
         ('n_iter', int, 500, ''),
     ]

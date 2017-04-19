@@ -477,7 +477,7 @@ ENV_OPTIONS = [
 	('num_fires_of_each_size', list, [2,2,2], ''),
 	('fire_locations', list, None, ''),
 	('start_positions', list, None, ''),
-	('gamma', float, GAMMA, ''),
+	('discount', float, GAMMA, ''),
 	('GRID_LIM', float, 1.0, ''),
 	('MAX_SIMTIME', float, MAX_SIMTIME, ''),
 	('UAV_VELOCITY', float, UAV_VELOCITY, ''),

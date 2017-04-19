@@ -8,6 +8,7 @@
 
 import copy
 import math
+from math import ceil
 import sys
 import itertools
 import os.path as osp
@@ -40,7 +41,7 @@ from math import exp
 
 
 GRID_LIM = 1.0 
-GAMMA = math.log(0.9)/(-5.)
+GAMMA = 0.02 # math.log(0.9)/(-5.)
 MAX_SIMTIME = math.log(0.005)/(-GAMMA)
 
 UAV_VELOCITY = 0.015 # m/s
@@ -49,13 +50,11 @@ HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
 UAV_MINS_STD = 1.5
 UAV_MINS_AVG = 3.
 
-
 PRINTING = False
 FIRE_DEBUG = False
 
 
 ## --- SIMPY FUNCTIONS
-
 
 def within_epsilon(arr1,arr2):
 	return np.linalg.norm( np.array(arr1) - np.array(arr2) ) < 0.001
@@ -152,7 +151,7 @@ class UAV(Agent):
 						self.fire_attacking = i
 					break
 
-			yield self.simpy_env.timeout(HOLD_TIME)
+			yield self.simpy_env.timeout( self.env.fixed_step(HOLD_TIME) )
 
 		else:
 			# assign new goal location, fire interest
@@ -169,7 +168,7 @@ class UAV(Agent):
 			if(PRINTING): print('UAV %d is heading from (%.2f, %.2f) to (%.2f, %.2f)' % 
 				(self.id_num, self.start_position[0], self.start_position[1], self.goal_position[0], self.goal_position[1] ))
 
-			yield self.simpy_env.timeout(travel_time)			
+			yield self.simpy_env.timeout(self.env.fixed_step(travel_time))	
 
 
 	@property
@@ -279,7 +278,7 @@ class Fire(object):
 				continue
 
 	def try_to_extinguish(self):
-		yield self.simpy_env.timeout(self.time_until_extinguish)
+		yield self.simpy_env.timeout(self.env.fixed_step(self.time_until_extinguish))
 
 	@property
 	def uavsecondsleft(self):
@@ -387,12 +386,13 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 
 	def __init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
-				 fire_locations = None, start_positions = None):
+				 fire_locations = None, start_positions = None, DT = -1):
 
 		EzPickle.__init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
 				 fire_locations, start_positions)
 		
 		self.discount = gamma
+		self.DT = DT
 
 		self.n_agents = num_agents
 		self.n_fires = num_fires
@@ -409,6 +409,15 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 		self.done = False
 
 		self.seed()
+
+	def fixed_step(self, time):
+		if(np.isinf(time)):
+			return time
+		elif(self.DT > 0.):
+			return max(float(ceil(time / self.DT )) * self.DT, 0.0)
+		else:
+			return max(time, 0.0)
+
 
 	def reset(self):
 
@@ -564,21 +573,46 @@ ENV_OPTIONS = [
 	('num_fires_of_each_size', list, [2,2,2], ''),
 	('fire_locations', list, None, ''),
 	('start_positions', list, None, ''),
-	('gamma', float, GAMMA, ''),
+	('discount', float, GAMMA, ''),
 	('GRID_LIM', float, 1.0, ''),
 	('MAX_SIMTIME', float, MAX_SIMTIME, ''),
 	('UAV_VELOCITY', float, UAV_VELOCITY, ''),
 	('HOLD_TIME', float, HOLD_TIME, ''),
 	('UAV_MINS_AVG', float, UAV_MINS_AVG, ''),
-	('UAV_MINS_STD', float, UAV_MINS_STD, '')
+	('UAV_MINS_STD', float, UAV_MINS_STD, ''),
+	('DT', float, -1., '')
 ]
 
 from FirestormProject.runners import RunnerParser
 from FirestormProject.runners.rurllab import RLLabRunner
+import tensorflow as tf
+
+
+
 
 if __name__ == "__main__":
 
 	parser = RunnerParser(ENV_OPTIONS)
+
+	import datetime
+	import dateutil
+
+	parser = RunnerParser(ENV_OPTIONS)
+	mode = parser._mode
+	args = parser.args
+
+	now = datetime.datetime.now(dateutil.tz.tzlocal())
+	timestamp = now.strftime('%Y_%m_%d_%H_%M_%S_%f_%Z')
+	exp_name = 'experiment_%s_dt_%.3f' % (timestamp, args.DT)
+
+	args.exp_name = exp_name
+	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
+							num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
+			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
+	run = RLLabRunner(env, args)
+	run()
+
+	quit()
 
 	mode = parser._mode
 	args = parser.args
@@ -587,75 +621,49 @@ if __name__ == "__main__":
 	assert args.n_fires == sum(args.num_fires_of_each_size), 'Not exactly as many fires of each size as available fires'
 
 	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
-								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.gamma,  
-				 				fire_locations = args.fire_locations, start_positions = args.start_positions)
-
-	from FirestormProject.test_policy import path_discounted_returns
-
-	# print('Simpy Rollout Fire SMDP')
-	# print(path_discounted_returns(env = env, num_traj = 5000, gamma = GAMMA, simpy = True))
+								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
+				 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 
 	# run = RLLabRunner(env, args)
-
 	# run()
 
-	## Test all learned policies on simpy env
+	from FirestormProject.test_policy import path_discounted_returns, policy_performance
 
-	import tensorflow as tf
-	import joblib
-
-	num_trajs_sim = 500
-
-	with tf.Session() as sess:
-		obj = joblib.load('./data/experiment_2017_04_10_11_21_38_simpy_rollout/itr_149.pkl')
-		policy = obj['policy']
-		print('ED Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
-
-	tf.reset_default_graph()
-	with tf.Session() as sess:
-		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
-		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_23_27_23_fixed_10e-1/itr_149.pkl')
-		policy = obj['policy']
-		print('Fixed-Step 0.1 Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
-
-	tf.reset_default_graph()
-	with tf.Session() as sess:
-		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
-		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_22_13_22_fixed_10e-0p5/itr_149.pkl')
-		policy = obj['policy']
-		print('Fixed-Step 0.32 Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
-
-	tf.reset_default_graph()
-	with tf.Session() as sess:
-		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
-		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_21_44_55_fixed_10e0/itr_149.pkl')
-		policy = obj['policy']
-		print('Fixed-Step 1.0 Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
-
-	tf.reset_default_graph()
-	with tf.Session() as sess:
-		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
-		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_20_42_19_fixed_10e0p5/itr_149.pkl')
-		policy = obj['policy']
-		print('Fixed-Step 3.2 Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
-
-	tf.reset_default_graph()
-	with tf.Session() as sess:
-		from FirestormProject.fixedstep_fire_smdp import FixedStepFireExtinguishingEnv
-		obj = joblib.load('./data/n_parallel1_simpymayhavebugs/experiment_2017_04_07_18_44_35_fixed_10e1/itr_149.pkl')
-		policy = obj['policy']
-		print('Fixed-Step 10.0 Learned Policy')
-		print(path_discounted_returns(env = env, num_traj = num_trajs_sim, gamma = GAMMA, policy = policy, simpy = True))
+	# # Test test_policy on all envs
+	# for dt in [-1, 10**(-1), 10**(-0.5), 10**(0), 10**(0.5), 10**(1)]:
+	# 	print('DT: ', dt)
+	# 	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
+	# 							num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
+	# 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = dt)
+	# 	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
+	# 	print(meanadr, stdadr)
 
 
+	# tf.reset_default_graph()
+	# with tf.Session() as sess:
+	# 	filename = 'experiment_2017_04_10_11_21_38_simpy_rollout'
+	# 	obj = joblib.load('./data/'+filename+'/itr_'+str(299)+'.pkl')
+	# 	env = obj['env']
+	# 	policy = obj['policy']
+	# 	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=6000, gamma=GAMMA, policy=policy, simpy=True, printing = True)
+	# 	# meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=GAMMA, simpy=True, printing = True)
+	# 	print(meanadr, stdadr)
 
 
+	num_trajs_sim = 300
 
+	filenames = [
+				# 'experiment_2017_04_10_11_21_38_simpy_rollout', 
+				# 'experiment_2017_04_14_18_32_59_simpy_rollout_dt10e-1_2',
+				# 'experiment_2017_04_12_22_09_47_simpy_rollout_dt10e-0.5',
+				# 'experiment_2017_04_12_20_58_13_simpy_rollout_dt10e0',
+				# 'experiment_2017_04_12_20_06_16_simpy_rollout_dt10e0.5',
+				# 'experiment_2017_04_14_22_22_37_simpy_rollout_dt10e1_2'
+				]
+
+	# for filename in filenames:
+	# 	_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 
+	# 		filename = filename, start_itr = 260, end_itr = 300)
 
 
 

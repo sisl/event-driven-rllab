@@ -599,6 +599,8 @@ ENV_OPTIONS = [
 	('HOLD_TIME', float, HOLD_TIME, ''),
 	('UAV_MINS_AVG', float, UAV_MINS_AVG, ''),
 	('UAV_MINS_STD', float, UAV_MINS_STD, ''),
+	('HOLD_TIME_VAR', float, HOLD_TIME_VAR, ''),
+	('ACTION_WAIT_TIME', float, ACTION_WAIT_TIME, ''),
 	('DT', float, -1., '')
 ]
 
@@ -611,7 +613,6 @@ from FirestormProject.test_policy import path_discounted_returns, policy_perform
 
 if __name__ == "__main__":
 
-	parser = RunnerParser(ENV_OPTIONS)
 
 	import datetime
 	import dateutil
@@ -629,10 +630,10 @@ if __name__ == "__main__":
 							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 
-	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
-	print(meanadr, stdadr)		
-	# run = RLLabRunner(env, args)
-	# run()
+	# meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
+	# print(meanadr, stdadr)		
+	run = RLLabRunner(env, args)
+	run()
 
 	quit()
 

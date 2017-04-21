@@ -107,8 +107,9 @@ def path_discounted_returns(env, gamma, num_traj, policy = test_policy(), simpy 
 
 import tensorflow as tf
 import joblib
-from FirestormProject.simpy_rollout_fire_smdp import FireExtinguishingEnv
 def policy_performance(env, gamma, num_traj, filename, start_itr, end_itr):
+	from FirestormProject.simpy_rollout_fire_smdp import FireExtinguishingEnv
+	
 	print(filename)
 	adr_list = []
 	bar = progressbar.ProgressBar()

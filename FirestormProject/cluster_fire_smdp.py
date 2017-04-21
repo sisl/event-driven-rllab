@@ -1,13 +1,19 @@
-## This file alters the game described in new_simpy_fire_smdp.py
+## This file alters the game described in simpy_rollout_fire_smdp.py
 # Here, agents receive a local observation (location,strength,status,interest) for 5 closest fires
 # Also, each fire gets random number of UAV-minutes needed to extinguish it, where the mean is a
 #  function of fire level
 # Rewards are equal to the fire level
+# Fires are clustered close together, but clusters are far apart
+# Also new in this version: Agents take epsilon time between get_obs and take_action so that
+# two agents supposed to act at the same time dont end up acting sequentially
+# Hold time is now normally distributed so that symmetry is broken
+# Fires are penalized 1 for trying to extinguish the same fire
 
 
 
 import copy
 import math
+deg = math.pi/180
 from math import ceil
 import sys
 import itertools
@@ -46,8 +52,11 @@ MAX_SIMTIME = math.log(0.005)/(-GAMMA)
 
 UAV_VELOCITY = 0.015 # m/s
 HOLD_TIME = 3. # How long an agent waits when it asks to hold its position
+HOLD_TIME_VAR = 0.1*HOLD_TIME
 
-UAV_MINS_STD = 1.5
+ACTION_WAIT_TIME = 1e-5
+
+UAV_MINS_STD = 0. #1.5
 UAV_MINS_AVG = 3.
 
 PRINTING = False
@@ -101,12 +110,13 @@ class UAV(Agent):
 
 		obs = self.get_obs()
 
-		while(True and not self.env.done):
+		while(not self.env.done):
 
+			yield self.simpy_env.timeout(ACTION_WAIT_TIME) # Forces small gap between get_obs and act
 			action, agent_info = self.policy(obs)
 			self.action_event = self.simpy_env.process(self.take_action(action))
 			try:
-				yield self.action_event
+				yield simpy.AnyOf(self.simpy_env,[self.action_event, self.env.done_event])
 			except simpy.Interrupt:
 				pass
 
@@ -149,7 +159,7 @@ class UAV(Agent):
 						self.fire_attacking = i
 					break
 
-			yield self.simpy_env.timeout( self.env.fixed_step(HOLD_TIME) )
+			yield self.simpy_env.timeout( self.env.fixed_step( HOLD_TIME + HOLD_TIME_VAR*np.random.normal() ))
 
 		else:
 			# assign new goal location, fire interest
@@ -258,8 +268,11 @@ class Fire(object):
 		self.level = level
 		self.reward = level
 
-		self.uav_seconds_left = float(truncnorm( -UAV_MINS_AVG*level / UAV_MINS_STD, np.inf).rvs(1))
-		self.uav_seconds_left = self.uav_seconds_left * UAV_MINS_STD + UAV_MINS_AVG*level
+		if(UAV_MINS_STD > 0):
+			self.uav_seconds_left = float(truncnorm( -UAV_MINS_AVG*level / UAV_MINS_STD, np.inf).rvs(1))
+			self.uav_seconds_left = self.uav_seconds_left * UAV_MINS_STD + UAV_MINS_AVG*level
+		else:
+			self.uav_seconds_left = UAV_MINS_AVG
 
 		if(PRINTING or FIRE_DEBUG):
 			print('Fire %d has a %.2f UAV seconds left' % (self.id_num, self.uav_seconds_left))
@@ -339,6 +352,10 @@ class Fire(object):
 		if uav not in self.extinguish_party: 
 			if(PRINTING): print('UAV %d is joining Fire %d extinguishing party at %.2f' % (uav.id_num, self.id_num, self.simpy_env.now))
 			self.extinguish_party.append(uav)
+			if len(self.extinguish_party) > 1:
+				# penalize everyone in the part 1
+				for uav in self.extinguish_party:
+					uav.accrue_reward(-1)
 		if(self.status):
 			self.update_extinguish_time()
 
@@ -383,18 +400,18 @@ class Fire(object):
 class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 
-	def __init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
+	def __init__(self, num_agents, num_fire_clusters, num_fires_per_cluster, gamma,
 				 fire_locations = None, start_positions = None, DT = -1):
 
-		EzPickle.__init__(self, num_agents, num_fires, num_fires_of_each_size, gamma,
+		EzPickle.__init__(self, num_agents, num_fire_clusters, num_fires_per_cluster, gamma,
 				 fire_locations, start_positions)
 		
 		self.discount = gamma
 		self.DT = DT
 
 		self.n_agents = num_agents
-		self.n_fires = num_fires
-		self.num_fires_of_each_size = num_fires_of_each_size
+		self.n_fires = num_fire_clusters * num_fires_per_cluster
+		self.num_fire_clusters = num_fire_clusters
 		self.fire_locations = fire_locations
 		self.start_positions = start_positions
 
@@ -412,12 +429,14 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 		if(np.isinf(time)):
 			return time
 		elif(self.DT > 0.):
-			return max(float(ceil(time / self.DT )) * self.DT, 0.0)
+			now = self.simpy_env.now
+			return max(float(ceil(now + time / self.DT )) * self.DT - now, 0.0)
 		else:
 			return max(time, 0.0)
 
 
 	def reset(self):
+		# This is a dummy reset just so agent obs/action spaces can be accessed
 
 		self.done = False
 
@@ -425,18 +444,12 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 		self.fire_extinguish_events = [simpy.Event(self.simpy_env) for i in range(self.n_fires)]
 
-		fire_levels = []
-		for i, n in enumerate(self.num_fires_of_each_size):
-			fire_levels += [i+1] * n
+		fire_levels = [1]*self.n_fires
 
-		if self.fire_locations is not None:
-			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
-				for i, fl in enumerate(self.fire_locations)  ]
-		else:
-			# we want to randomize
-			fire_locations = ( 2.*np.random.random_sample((self.n_fires,2)) - 1.).tolist()
-			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
-				for i, fl in enumerate(fire_locations)  ]
+		# we want to randomize
+		fire_locations = ( 2.*np.random.random_sample((self.n_fires,2)) - 1.).tolist()
+		self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
+			for i, fl in enumerate(fire_locations)  ]
 
 		if self.start_positions is not None:
 			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, None) for i,sp in enumerate(self.start_positions) ]
@@ -458,14 +471,21 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 		self.fire_extinguish_events = [simpy.Event(self.simpy_env) for i in range(self.n_fires)]
 
-		fire_levels = []
-		for i, n in enumerate(self.num_fires_of_each_size):
-			fire_levels += [i+1] * n
 
-		if self.fire_locations is not None:
-			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
-				for i, fl in enumerate(self.fire_locations)  ]
+		if self.fire_locations is True:
+			# Use presets
+			assert self.num_fire_clusters == 3, 'Only 3 clusters / fires per cluster implemented right now :('
+			assert self.n_fires/self.num_fire_clusters == 3, 'Only 3 clusters / fires per cluster implemented right now :('
+			R = np.array([[np.cos(120*deg),np.sin(-120*deg)],[np.sin(120*deg), np.cos(120*deg)]])
+			f1 = np.reshape(np.array([-0.01, 1]),(2,1))
+			f2 = np.reshape(np.array([0.01, 1]),(2,1))
+			f3 = np.reshape(np.array([0, 1 - 0.02*math.sin(60*deg)]),(2,1))
+			fire_locations = [f1,f2,f3, R.dot(f1),R.dot(f2),R.dot(f3), R.T.dot(f1),R.T.dot(f2),R.T.dot(f3) ]
+			fire_locations = [np.reshape(f,(2,)).tolist() for f in fire_locations]
+			self.fires = [Fire(self,self.simpy_env, i, 1, fl)
+								for i, fl in enumerate(fire_locations)  ]
 		else:
+			raise NotImplementedError
 			# we want to randomize
 			fire_locations = ( 2.*np.random.random_sample((self.n_fires,2)) - 1.).tolist()
 			self.fires = [ Fire(self, self.simpy_env, i, fire_levels[i], fl) 
@@ -479,27 +499,28 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 			self.env_agents = [ UAV(self, self.simpy_env, i, sp, sp, self.discount, policies[i]) for i,sp in enumerate(start_positions) ]
 			
 		# Process all UAVs
+		agent_events = []
 		for uav in self.env_agents:
-			self.simpy_env.process( uav.sim() )
+			agent_events.append(self.simpy_env.process( uav.sim() ))
 		# Process all fires
 		for fire in self.fires:
 			self.simpy_env.process( fire.sim() )
 
-		done = simpy.AllOf(self.simpy_env, self.fire_extinguish_events)
+		self.max_simtime_event = self.simpy_env.timeout(MAX_SIMTIME)
 
-		self.simpy_env.run(until = simpy.AnyOf(self.simpy_env, [done, self.simpy_env.timeout(MAX_SIMTIME)]) )
+		self.done_event = simpy.Event(self.simpy_env)
+		self.simpy_env.run(until = simpy.AllOf(self.simpy_env, self.fire_extinguish_events) | self.max_simtime_event )
+		self.done_event.succeed()
 
 		self.done = True
 
-		if(True):
-			for uav in self.env_agents:
-				try:
-					uav.action_event.interrupt()
-				except RuntimeError:
-					pass
-			self.simpy_env.run(until = self.simpy_env.now*(1.0001))
+		self.simpy_env.run(until = simpy.AllOf(self.simpy_env, agent_events))
 
-		assert sum([uav.get_reward() for uav in self.env_agents]) == 0, 'There were unaccounted for rewards'
+		rewards = [uav.get_reward() for uav in self.env_agents]
+		if sum(rewards) != 0:
+			print('There were unaccounted for rewards')
+			[print(r) for r in rewards]
+			raise RuntimeError
 
 		# Collect observations, actions, etc.. and return them
 		observations = [ u.observations for u in self.env_agents]
@@ -567,9 +588,9 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 ENV_OPTIONS = [
 	('n_agents', int, 3, ''),
-	('n_fires' , int, 6, ''),
-	('num_fires_of_each_size', list, [2,2,2], ''),
-	('fire_locations', list, None, ''),
+	('n_fire_clusters', int, 3, ''),
+	('n_fires_per_cluster' , int, 3, ''),
+	('fire_locations', list, True, ''),
 	('start_positions', list, None, ''),
 	('discount', float, GAMMA, ''),
 	('GRID_LIM', float, 1.0, ''),
@@ -604,8 +625,8 @@ if __name__ == "__main__":
 	exp_name = 'experiment_%s_dt_%.3f' % (timestamp, args.DT)
 
 	args.exp_name = exp_name
-	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
-							num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
+	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fire_clusters = args.n_fire_clusters, 
+							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 
 	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
@@ -619,11 +640,10 @@ if __name__ == "__main__":
 	args = parser.args
 
 	assert args.n_fires >= 5, 'Need 5 or more fires'
-	assert args.n_fires == sum(args.num_fires_of_each_size), 'Not exactly as many fires of each size as available fires'
 
-	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
-								num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
-				 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
+	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fire_clusters = args.num_fire_clusters, 
+							num_fires_per_cluster = args.num_fires_per_cluster, gamma = args.discount,  
+			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 
 	# run = RLLabRunner(env, args)
 	# run()

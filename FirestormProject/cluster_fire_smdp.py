@@ -59,8 +59,8 @@ ACTION_WAIT_TIME = 1e-5
 UAV_MINS_STD = 0. #1.5
 UAV_MINS_AVG = 3.
 
-PRINTING = False
-FIRE_DEBUG = False
+PRINTING = True
+FIRE_DEBUG = True
 
 
 ## --- SIMPY FUNCTIONS
@@ -404,7 +404,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 				 fire_locations = None, start_positions = None, DT = -1):
 
 		EzPickle.__init__(self, num_agents, num_fire_clusters, num_fires_per_cluster, gamma,
-				 fire_locations, start_positions)
+				 fire_locations, start_positions, DT)
 		
 		self.discount = gamma
 		self.DT = DT
@@ -635,28 +635,8 @@ if __name__ == "__main__":
 	run = RLLabRunner(env, args)
 	run()
 
-	quit()
+	# quit()
 
-	mode = parser._mode
-	args = parser.args
-
-	assert args.n_fires >= 5, 'Need 5 or more fires'
-
-	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fire_clusters = args.num_fire_clusters, 
-							num_fires_per_cluster = args.num_fires_per_cluster, gamma = args.discount,  
-			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
-
-	# run = RLLabRunner(env, args)
-	# run()
-
-	# # Test test_policy on all envs
-	# for dt in [-1, 10**(-1), 10**(-0.5), 10**(0), 10**(0.5), 10**(1)]:
-	# 	print('DT: ', dt)
-	# 	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fires = args.n_fires, 
-	# 							num_fires_of_each_size = args.num_fires_of_each_size, gamma = args.discount,  
-	# 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = dt)
-	# 	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
-	# 	print(meanadr, stdadr)
 
 
 	# tf.reset_default_graph()
@@ -673,17 +653,13 @@ if __name__ == "__main__":
 	num_trajs_sim = 300
 
 	filenames = [
-				# 'experiment_2017_04_10_11_21_38_simpy_rollout', 
-				# 'experiment_2017_04_14_18_32_59_simpy_rollout_dt10e-1_2',
-				# 'experiment_2017_04_12_22_09_47_simpy_rollout_dt10e-0.5',
-				# 'experiment_2017_04_12_20_58_13_simpy_rollout_dt10e0',
-				# 'experiment_2017_04_12_20_06_16_simpy_rollout_dt10e0.5',
-				# 'experiment_2017_04_14_22_22_37_simpy_rollout_dt10e1_2'
+				'experiment_2017_04_21_14_58_11_575860_PDT_dt_10.000',
+				'experiment_2017_04_21_15_10_08_966990_PDT_dt_-1.000'
 				]
 
-	# for filename in filenames:
-	# 	_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 
-	# 		filename = filename, start_itr = 260, end_itr = 300)
+	for filename in filenames:
+		_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 
+			filename = filename, start_itr = 260, end_itr = 300)
 
 
 

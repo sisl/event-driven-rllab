@@ -272,6 +272,8 @@ class RLLabRunner(object):
                                discount=args.discount, scale_reward=0.01,
                                qf_learning_rate=args.qfunc_lr, policy_learning_rate=args.policy_lr,
                                eval_samples=args.eval_samples, mode=args.control, )
+        # import pdb
+        # pdb.set_trace()
 
     def __call__(self):
         self.algo.train()

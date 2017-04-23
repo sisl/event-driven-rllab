@@ -133,6 +133,60 @@ def policy_performance(env, gamma, num_traj, filename, start_itr, end_itr):
 	return mean_adr, std_adr, adr_list
 
 
+from rllab.sampler import parallel_sampler
+from rllab.sampler.stateful_pool import singleton_pool, SharedGlobal
+from rllab.misc import ext
+from rllab.misc import logger
+
+def _worker_collect_adr_one_env(G, max_path_length, ma_mode, scope=None):
+	G = parallel_sampler._get_scoped_G(G, scope)
+	paths = ed_simpy_dec_rollout(G.env, G.policy, max_path_length)
+	adr = []
+	for path in paths:
+		t_sojourn = path["offset_t_sojourn"]
+		gamma = G.env.wrappend_env.discount
+		discount_gamma = np.exp(-gamma*t_sojourn)
+		path_adr = variable_discount_cumsum(path["rewards"], discount_gamma)
+		avg_discounted_return = path_adr[0]
+		adr.append(avg_discounted_return)
+	return mean(adr), 1
+
+def parallel_path_discounted_returns(env, num_traj, policy = test_policy(), max_path_length = 50000):
+
+	singleton_pool.run_each(
+		parallel_sampler._worker_set_policy_params,
+		[(policy_params, scope)] * singleton_pool.n_parallel
+	)
+	if env_params is not None:
+		singleton_pool.run_each(
+			parallel_sampler._worker_set_env_params,
+			[(env_params, scope)] * singleton_pool.n_parallel
+		)
+
+	return singleton_pool.run_collect(
+		#_worker_collect_one_path,
+		_worker_collect_path_one_env,
+		threshold=num_traj,
+		args=(max_path_length, scope),
+		show_prog_bar=True
+	)
+
+def parallel_policy_performance(env, num_traj, filename, start_itr, end_itr):
+	from FirestormProject.cluster_fire_smdp import FireExtinguishingEnv
+
+	out_dict = {}
+	for i in range(start_itr, end_itr):
+		# print('Policy itr_%d'%(i))
+		tf.reset_default_graph()
+		with tf.Session() as sess:
+			obj = joblib.load('./data/'+filename+'/itr_'+str(i)+'.pkl')
+			policy = obj['policy']
+			discounted_returns = parallel_path_discounted_returns(env=env, num_traj=num_traj, gamma=gamma, policy=policy, simpy=True)
+			out_dict[i] = discounted_returns
+
+	return out_dict
+
+
 
 
 

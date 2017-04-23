@@ -59,8 +59,8 @@ ACTION_WAIT_TIME = 1e-5
 UAV_MINS_STD = 0. #1.5
 UAV_MINS_AVG = 3.
 
-PRINTING = True
-FIRE_DEBUG = True
+PRINTING = False
+FIRE_DEBUG = False
 
 
 ## --- SIMPY FUNCTIONS
@@ -430,7 +430,7 @@ class FireExtinguishingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 			return time
 		elif(self.DT > 0.):
 			now = self.simpy_env.now
-			return max(float(ceil(now + time / self.DT )) * self.DT - now, 0.0)
+			return max(float(ceil((now + time) / self.DT )) * self.DT - now, 0.0)
 		else:
 			return max(time, 0.0)
 
@@ -609,7 +609,7 @@ from FirestormProject.runners.rurllab import RLLabRunner
 import tensorflow as tf
 
 
-from FirestormProject.test_policy import path_discounted_returns, policy_performance
+from FirestormProject.test_policy import path_discounted_returns, policy_performance, parallel_policy_performance
 
 if __name__ == "__main__":
 
@@ -629,33 +629,28 @@ if __name__ == "__main__":
 	env =  FireExtinguishingEnv(num_agents = args.n_agents, num_fire_clusters = args.n_fire_clusters, 
 							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
-
-	# meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=args.discount, simpy=True, printing = True)
-	# print(meanadr, stdadr)		
+	
 	run = RLLabRunner(env, args)
 	run()
 
 	# quit()
 
-
-
-	# tf.reset_default_graph()
-	# with tf.Session() as sess:
-	# 	filename = 'experiment_2017_04_10_11_21_38_simpy_rollout'
-	# 	obj = joblib.load('./data/'+filename+'/itr_'+str(299)+'.pkl')
-	# 	env = obj['env']
-	# 	policy = obj['policy']
-	# 	meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=6000, gamma=GAMMA, policy=policy, simpy=True, printing = True)
-	# 	# meanadr,stdadr,adr = path_discounted_returns(env=env, num_traj=12000, gamma=GAMMA, simpy=True, printing = True)
-	# 	print(meanadr, stdadr)
-
-
 	num_trajs_sim = 300
 
 	filenames = [
-				'experiment_2017_04_21_14_58_11_575860_PDT_dt_10.000',
+				# 'experiment_2017_04_22_16_19_02_355159_PDT_dt_10.000',
+				'experiment_2017_04_22_16_51_28_720596_PDT_dt_1.000',
 				'experiment_2017_04_21_15_10_08_966990_PDT_dt_-1.000'
 				]
+
+	# experiment_2017_04_22_16_51_28_720596_PDT_dt_1.000
+	# 100% (40 of 40) |########################################################################################################################| Elapsed Time: 0:14:29 Time: 0:14:29
+	# Mean ADR:  2.74564120508
+	# Std ADR: 0.00777526574076
+	# experiment_2017_04_21_15_10_08_966990_PDT_dt_-1.000
+	# 100% (40 of 40) |########################################################################################################################| Elapsed Time: 0:24:46 Time: 0:24:46
+	# Mean ADR:  2.82731574999
+	# Std ADR: 0.00812471811702
 
 	for filename in filenames:
 		_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 

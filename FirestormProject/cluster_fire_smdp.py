@@ -630,18 +630,20 @@ if __name__ == "__main__":
 							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 	
-	run = RLLabRunner(env, args)
-	run()
+	# run = RLLabRunner(env, args)
+	# run()
 
 	# quit()
 
-	num_trajs_sim = 300
 
 	filenames = [
-				# 'experiment_2017_04_22_16_19_02_355159_PDT_dt_10.000',
-				'experiment_2017_04_22_16_51_28_720596_PDT_dt_1.000',
-				'experiment_2017_04_21_15_10_08_966990_PDT_dt_-1.000'
-				]
+	    'experiment_2017_04_22_19_15_17_101782_PDT_dt_-1.000',
+	    'experiment_2017_04_22_19_03_39_104449_PDT_dt_0.100',
+	    'experiment_2017_04_22_18_51_33_838148_PDT_dt_0.316',
+	    'experiment_2017_04_22_18_40_00_951295_PDT_dt_1.000',
+	    'experiment_2017_04_22_18_28_44_508570_PDT_dt_3.162',
+	    'experiment_2017_04_22_18_17_40_977501_PDT_dt_10.000'
+	]
 
 	# experiment_2017_04_22_16_51_28_720596_PDT_dt_1.000
 	# 100% (40 of 40) |########################################################################################################################| Elapsed Time: 0:14:29 Time: 0:14:29
@@ -652,9 +654,40 @@ if __name__ == "__main__":
 	# Mean ADR:  2.82731574999
 	# Std ADR: 0.00812471811702
 
-	for filename in filenames:
-		_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 
-			filename = filename, start_itr = 260, end_itr = 300)
+	# for filename in filenames:
+	# 	_, _, adr_list = policy_performance(env = env, gamma = args.discount, num_traj = num_trajs_sim, 
+	# 		filename = filename, start_itr = 260, end_itr = 300)
+
+	# num_traj_sim = 100
+	# out_dict = {}
+	# for filename in filenames:
+	# 	out_dict[filename] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
+	# 		filename = filename, start_itr = 260, end_itr = 300)
+
+	# import pickle
+	# pickle.dump(out_dict, open('./data/policyperformance.pkl','wb'))
+
+	num_traj_sim = 100
+	import glob
+	experiments = {-1: './*_-1.000', 10: './*_10.000', 0.316: './*_0.316',
+	 3.162: './*_3.162', 1: './*_1.000', 0.1: './*_0.100'  }
+	results = {}
+	for exp_id, exp_dirs in experiments.items():
+		print('Experiment %.2f' % (exp_id))
+		filenames = glob.glob(exp_dirs)
+		out_dict = {}
+		for i, fn in enumerate(filenames):
+			out_dict[i] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
+				filename = filename, start_itr = 260, end_itr = 300)
+		results[exp_id] = out_dict
+
+	import pickle
+	pickle.dump(out_dict, open('./data/policyperformance.pkl','wb'))
+
+
+		
+
+
 
 
 

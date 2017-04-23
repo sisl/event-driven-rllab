@@ -151,37 +151,59 @@ def _worker_collect_adr_one_env(G, max_path_length, ma_mode, scope=None):
 		adr.append(avg_discounted_return)
 	return mean(adr), 1
 
+def collect_one_adr(env, policy, max_path_length):
+	paths = ed_simpy_dec_rollout(env, policy, max_path_length)
+	adr = []
+	for path in paths:
+		t_sojourn = path["offset_t_sojourn"]
+		gamma = env.wrapped_env.discount
+		discount_gamma = np.exp(-gamma*t_sojourn)
+		path_adr = variable_discount_cumsum(path["rewards"], discount_gamma)
+		avg_discounted_return = path_adr[0]
+		adr.append(avg_discounted_return)
+	return mean(adr)
+
+
 def parallel_path_discounted_returns(env, num_traj, policy = test_policy(), max_path_length = 50000):
+	return [ collect_one_adr(env, policy, max_path_length) for i in range(num_traj) ]
+	# policy_params = policy.get_param_values()
+	# scope = None
 
-	singleton_pool.run_each(
-		parallel_sampler._worker_set_policy_params,
-		[(policy_params, scope)] * singleton_pool.n_parallel
-	)
-	if env_params is not None:
-		singleton_pool.run_each(
-			parallel_sampler._worker_set_env_params,
-			[(env_params, scope)] * singleton_pool.n_parallel
-		)
+	# singleton_pool.run_each(
+	# 	parallel_sampler._worker_set_policy_params,
+	# 	[(policy_params, scope)] * singleton_pool.n_parallel
+	# )
+	# if env_params is not None:
+	# 	singleton_pool.run_each(
+	# 		parallel_sampler._worker_set_env_params,
+	# 		[(env_params, scope)] * singleton_pool.n_parallel
+	# 	)
 
-	return singleton_pool.run_collect(
-		#_worker_collect_one_path,
-		_worker_collect_path_one_env,
-		threshold=num_traj,
-		args=(max_path_length, scope),
-		show_prog_bar=True
-	)
+	# return singleton_pool.run_collect(
+	# 	#_worker_collect_one_path,
+	# 	_worker_collect_path_one_env,
+	# 	threshold=num_traj,
+	# 	args=(max_path_length, scope),
+	# 	show_prog_bar=True
+	# )
+
 
 def parallel_policy_performance(env, num_traj, filename, start_itr, end_itr):
+
+	if(not isinstance(env,TfEnv)):
+		env = TfEnv(env)
+
 	from FirestormProject.cluster_fire_smdp import FireExtinguishingEnv
 
 	out_dict = {}
-	for i in range(start_itr, end_itr):
+	bar = progressbar.ProgressBar()
+	for i in bar(range(start_itr, end_itr)):
 		# print('Policy itr_%d'%(i))
 		tf.reset_default_graph()
 		with tf.Session() as sess:
 			obj = joblib.load('./data/'+filename+'/itr_'+str(i)+'.pkl')
 			policy = obj['policy']
-			discounted_returns = parallel_path_discounted_returns(env=env, num_traj=num_traj, gamma=gamma, policy=policy, simpy=True)
+			discounted_returns = parallel_path_discounted_returns(env=env, num_traj=num_traj, policy=policy)
 			out_dict[i] = discounted_returns
 
 	return out_dict

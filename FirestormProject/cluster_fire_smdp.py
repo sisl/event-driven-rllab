@@ -667,22 +667,23 @@ if __name__ == "__main__":
 	# import pickle
 	# pickle.dump(out_dict, open('./data/policyperformance.pkl','wb'))
 
-	num_traj_sim = 100
+	num_traj_sim = 1
 	import glob
-	experiments = {-1: './*_-1.000', 10: './*_10.000', 0.316: './*_0.316',
-	 3.162: './*_3.162', 1: './*_1.000', 0.1: './*_0.100'  }
+	import pickle
+	experiments = {-1: './data/*_-1.000', 10: './data/*_10.000', 0.316: './data/*_0.316',
+	 3.162: './data/*_3.162', 1: './data/*_1.000', 0.1: './data/*_0.100'  }
 	results = {}
 	for exp_id, exp_dirs in experiments.items():
 		print('Experiment %.2f' % (exp_id))
 		filenames = glob.glob(exp_dirs)
 		out_dict = {}
 		for i, fn in enumerate(filenames):
-			out_dict[i] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
-				filename = filename, start_itr = 260, end_itr = 300)
-		results[exp_id] = out_dict
+			out_dict[str(i)] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
+				filename = fn, start_itr = 260, end_itr = 300)
+		results[str(exp_id)] = out_dict
+		pickle.dump(out_dict, open('./data/ckpt_'+str(exp_id)+'.pkl','wb'))
 
-	import pickle
-	pickle.dump(out_dict, open('./data/policyperformance.pkl','wb'))
+	pickle.dump(results, open('./data/policyperformance.pkl','wb'))
 
 
 		

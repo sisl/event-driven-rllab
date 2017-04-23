@@ -201,10 +201,10 @@ def parallel_policy_performance(env, num_traj, filename, start_itr, end_itr):
 		# print('Policy itr_%d'%(i))
 		tf.reset_default_graph()
 		with tf.Session() as sess:
-			obj = joblib.load('./data/'+filename+'/itr_'+str(i)+'.pkl')
+			obj = joblib.load('./'+filename+'/itr_'+str(i)+'.pkl')
 			policy = obj['policy']
 			discounted_returns = parallel_path_discounted_returns(env=env, num_traj=num_traj, policy=policy)
-			out_dict[i] = discounted_returns
+			out_dict[str(i)] = discounted_returns
 
 	return out_dict
 

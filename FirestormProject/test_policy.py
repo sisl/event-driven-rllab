@@ -52,6 +52,66 @@ class test_policy():
 			return random.randint(0,5)
 
 
+class test_smart_policy(test_policy):
+
+	# @property
+	# def recurrent(self):
+	# 	return False
+
+	# def reset(self, dones = None):
+	# 	return
+
+	# def get_actions(self, olist):
+	# 	actions = [self.get_action(o) for o in olist]
+	# 	return actions, dict(probs = [0]*len(olist))
+
+	# def __init__(self):
+	# 	return
+
+	def get_action(self, obs):
+		if obs == [None]:
+			return None
+		# Extract meaningful observations
+		my_loc = obs[0:2]
+
+		fires = []
+		for i in range(5):
+			ind_off = 2 + i*5
+			dist = obs[ ind_off ]
+			reward, interest, status, secondsleft = tuple(obs[ind_off + 1 : ind_off + 5])
+			level = reward
+			f = {'dist': dist, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level, 'secondsleft': secondsleft}
+			fires.append(f)
+
+		
+		live_fires = [ f for f in fires if f['status']]
+		try:
+			live_fires = sorted(live_fires, key=lambda k: k['dist']) 
+		except TypeError:
+			import pdb
+			pdb.set_trace()
+
+
+			
+		while(len(live_fires) > 0):
+			fire_to_go_to = live_fires[0] 
+
+			if(fire_to_go_to['dist'] < 1e-2 and fire_to_go_to['intr'] <= 1):
+				return 5
+			elif(fire_to_go_to['intr'] == 0): 
+				return fires.index(fire_to_go_to)
+			else:
+				live_fires.pop(0)
+
+
+
+
+		else:
+			# pick a random action
+			return random.randint(0,5)
+
+
+
 
 
 from eventdriven.EDhelpers import variable_discount_cumsum, ed_dec_rollout, ed_simpy_dec_rollout
@@ -164,8 +224,10 @@ def collect_one_adr(env, policy, max_path_length):
 	return mean(adr)
 
 
-def parallel_path_discounted_returns(env, num_traj, policy = test_policy(), max_path_length = 50000):
-	return [ collect_one_adr(env, policy, max_path_length) for i in range(num_traj) ]
+def parallel_path_discounted_returns(env, num_traj, policy = test_policy(), max_path_length = 50000, progbar = False):
+	bar = progressbar.ProgressBar()
+	rng = bar(range(num_traj)) if progbar else range(num_traj)
+	return [ collect_one_adr(env, policy, max_path_length) for i in rng]
 	# policy_params = policy.get_param_values()
 	# scope = None
 

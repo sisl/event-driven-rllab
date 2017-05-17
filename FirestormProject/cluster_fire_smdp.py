@@ -355,7 +355,7 @@ class Fire(object):
 			if len(self.extinguish_party) > 1:
 				# penalize everyone in the part 1
 				for uav in self.extinguish_party:
-					uav.accrue_reward(-1)
+					uav.accrue_reward(-20)
 		if(self.status):
 			self.update_extinguish_time()
 
@@ -609,7 +609,8 @@ from FirestormProject.runners.rurllab import RLLabRunner
 import tensorflow as tf
 
 
-from FirestormProject.test_policy import path_discounted_returns, policy_performance, parallel_policy_performance
+from FirestormProject.test_policy import path_discounted_returns, policy_performance, \
+		parallel_policy_performance, parallel_path_discounted_returns, test_smart_policy
 
 if __name__ == "__main__":
 
@@ -630,10 +631,17 @@ if __name__ == "__main__":
 							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 	
-	# run = RLLabRunner(env, args)
-	# run()
+	#run = RLLabRunner(env, args)
+	#run()
 
-	# quit()
+	#quit()
+
+	# Test simply_policy
+	from sandbox.rocky.tf.envs.base import TfEnv
+	paths = parallel_path_discounted_returns(env=TfEnv(env), num_traj=1000, policy = test_smart_policy(), progbar = True)
+	print(np.mean(paths), np.std(paths) / np.sqrt(len(paths)))
+
+	quit()
 
 
 	filenames = [

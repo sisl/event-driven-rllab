@@ -45,3 +45,7 @@ sandbox
 *.pkl
 
 *.csv
+
+*.json
+
+*.fig

@@ -239,7 +239,7 @@ class Stop(object):
 	def __str__(self):
 		return '<{} instance>'.format(type(self).__name__)
 
-	def __init__(self, env, simpy_env, id_num, arrival_rate, alight_raticho, travel_time):
+	def __init__(self, env, simpy_env, id_num, arrival_rate, alight_ratio, travel_time):
 		self.env = env
 		self.simpy_env = simpy_env
 		self.id_num = id_num

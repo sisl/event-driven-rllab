@@ -610,7 +610,7 @@ import tensorflow as tf
 
 
 from FirestormProject.test_policy import path_discounted_returns, policy_performance, \
-		parallel_policy_performance, parallel_path_discounted_returns, test_smart_policy
+		parallel_policy_performance, parallel_path_discounted_returns, test_smart_policy, test_learned_policy_approximation
 
 if __name__ == "__main__":
 
@@ -631,27 +631,27 @@ if __name__ == "__main__":
 							num_fires_per_cluster = args.n_fires_per_cluster, gamma = args.discount,  
 			 				fire_locations = args.fire_locations, start_positions = args.start_positions, DT = args.DT)
 	
-	#run = RLLabRunner(env, args)
-	#run()
+	# #run = RLLabRunner(env, args)
+	# #run()
 
-	#quit()
+	# #quit()
 
-	# Test simply_policy
-	from sandbox.rocky.tf.envs.base import TfEnv
-	paths = parallel_path_discounted_returns(env=TfEnv(env), num_traj=1000, policy = test_smart_policy(), progbar = True)
-	print(np.mean(paths), np.std(paths) / np.sqrt(len(paths)))
+	# # Test simply_policy
+	# from sandbox.rocky.tf.envs.base import TfEnv
+	# paths = parallel_path_discounted_returns(env=TfEnv(env), num_traj=1000, policy = test_smart_policy(), progbar = True)
+	# print(np.mean(paths), np.std(paths) / np.sqrt(len(paths)))
 
-	quit()
+	# quit()
 
 
-	filenames = [
-	    'experiment_2017_04_22_19_15_17_101782_PDT_dt_-1.000',
-	    'experiment_2017_04_22_19_03_39_104449_PDT_dt_0.100',
-	    'experiment_2017_04_22_18_51_33_838148_PDT_dt_0.316',
-	    'experiment_2017_04_22_18_40_00_951295_PDT_dt_1.000',
-	    'experiment_2017_04_22_18_28_44_508570_PDT_dt_3.162',
-	    'experiment_2017_04_22_18_17_40_977501_PDT_dt_10.000'
-	]
+	# filenames = [
+	#     'experiment_2017_04_22_19_15_17_101782_PDT_dt_-1.000',
+	#     'experiment_2017_04_22_19_03_39_104449_PDT_dt_0.100',
+	#     'experiment_2017_04_22_18_51_33_838148_PDT_dt_0.316',
+	#     'experiment_2017_04_22_18_40_00_951295_PDT_dt_1.000',
+	#     'experiment_2017_04_22_18_28_44_508570_PDT_dt_3.162',
+	#     'experiment_2017_04_22_18_17_40_977501_PDT_dt_10.000'
+	# ]
 
 	# experiment_2017_04_22_16_51_28_720596_PDT_dt_1.000
 	# 100% (40 of 40) |########################################################################################################################| Elapsed Time: 0:14:29 Time: 0:14:29
@@ -675,26 +675,94 @@ if __name__ == "__main__":
 	# import pickle
 	# pickle.dump(out_dict, open('./data/policyperformance.pkl','wb'))
 
-	num_traj_sim = 1
-	import glob
-	import pickle
-	experiments = {-1: './data/*_-1.000', 10: './data/*_10.000', 0.316: './data/*_0.316',
-	 3.162: './data/*_3.162', 1: './data/*_1.000', 0.1: './data/*_0.100'  }
-	results = {}
-	for exp_id, exp_dirs in experiments.items():
-		print('Experiment %.2f' % (exp_id))
-		filenames = glob.glob(exp_dirs)
-		out_dict = {}
-		for i, fn in enumerate(filenames):
-			out_dict[str(i)] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
-				filename = fn, start_itr = 260, end_itr = 300)
-		results[str(exp_id)] = out_dict
-		pickle.dump(out_dict, open('./data/ckpt_'+str(exp_id)+'.pkl','wb'))
+	# num_traj_sim = 1
+	# import glob
+	# import pickle
+	# experiments = {-1: './data/*_-1.000', 10: './data/*_10.000', 0.316: './data/*_0.316',
+	#  3.162: './data/*_3.162', 1: './data/*_1.000', 0.1: './data/*_0.100'  }
+	# results = {}
+	# for exp_id, exp_dirs in experiments.items():
+	# 	print('Experiment %.2f' % (exp_id))
+	# 	filenames = glob.glob(exp_dirs)
+	# 	out_dict = {}
+	# 	for i, fn in enumerate(filenames):
+	# 		out_dict[str(i)] = parallel_policy_performance(env = env, num_traj = num_traj_sim, 
+	# 			filename = fn, start_itr = 260, end_itr = 300)
+	# 	results[str(exp_id)] = out_dict
+	# 	pickle.dump(out_dict, open('./data/ckpt_'+str(exp_id)+'.pkl','wb'))
 
-	pickle.dump(results, open('./data/policyperformance.pkl','wb'))
+	# pickle.dump(results, open('./data/policyperformance.pkl','wb'))
+
+	# experiment = '/Users/kunalmenda/Google-Drive/Stanford-Quarters/WI17/SISL-Research/sfi-research/event-driven-rllab/data_firestorm/data/experiment_2017_04_26_21_21_51_693266_PDT_dt_-1.000_high_coll_pen'
 
 
-		
+	# from eventdriven.EDhelpers import variable_discount_cumsum, ed_dec_rollout, ed_simpy_dec_rollout
+	# import joblib
+	# import progressbar
+	# import csv
+
+	# tf.reset_default_graph()
+	# with tf.Session() as sess:
+
+	# 	obj = joblib.load(experiment+'/itr_2999.pkl')
+	# 	policy = obj['policy']
+	# 	env = obj['env']
+
+	# 	bar = progressbar.ProgressBar()
+	# 	paths = [ed_simpy_dec_rollout(env, policy, 500000) for i in bar(range(500))]
+
+	# with open('output.csv', 'w') as csvfile:
+	# 	writer = csv.writer(csvfile, delimiter=',',
+	# 						quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+
+	# 	headers = ['SimNumber', 'AgentNumber', 'X','Y']
+	# 	for i in range(5):
+	# 		headers += [ 'Dist%d'%(i), 'Rew%d'%(i), 'Interest%d'%(i), 'Status%d'%(i), 'Health%d'%(i) ]
+	# 	headers += ['SojournTime', 'Action', 'Reward']
+
+
+	# 	writer.writerow(headers)
+
+	# 	for i, path in enumerate(paths):
+	# 		for j, agentpath in enumerate(path):
+	# 			for k in range(agentpath['observations'].shape[0]):
+
+	# 				# pdb.set_trace()
+
+	# 				obs_k = agentpath['observations'][k,:].tolist()
+	# 				act_k = agentpath['actions'][k,:]
+	# 				act_k = np.where(act_k==1)[0][0]
+	# 				reward_k = agentpath['rewards'][k]
+	# 				row = [i,j] + obs_k + [act_k, reward_k]
+					
+	# 				writer.writerow(row)
+
+	# Comparing policy to approximated policy
+
+	num_traj = 500
+	ppdr = parallel_path_discounted_returns(env, num_traj, test_learned_policy_approximation(), progbar=True)
+	print(np.mean(ppdr), np.std(ppdr)/np.sqrt(num_traj))
+
+	experiment = '/Users/kunalmenda/Google-Drive/Stanford-Quarters/WI17/SISL-Research/sfi-research/event-driven-rllab/data_firestorm/data/experiment_2017_04_26_21_21_51_693266_PDT_dt_-1.000_high_coll_pen'
+
+	from eventdriven.EDhelpers import variable_discount_cumsum, ed_dec_rollout, ed_simpy_dec_rollout
+	import joblib
+	import progressbar
+	import csv
+
+	tf.reset_default_graph()
+	with tf.Session() as sess:
+
+		obj = joblib.load(experiment+'/itr_2999.pkl')
+		policy = obj['policy']
+		ppdr = parallel_path_discounted_returns(env, num_traj, policy, progbar=True)
+		print(np.mean(ppdr), np.std(ppdr)/np.sqrt(num_traj))
+
+
+
+
+
 
 
 

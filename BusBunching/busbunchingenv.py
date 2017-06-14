@@ -120,6 +120,7 @@ class Bus(Agent):
 
 		stop = self.env.stops[self.next_stop]
 
+		load_at_arrival = self.load
 		passengers_alighting = round(self.load * stop.alight_ratio)
 		alighting_time = passengers_alighting * self.env.alighting_time
 
@@ -175,6 +176,12 @@ class Bus(Agent):
 		if(PRINTING):
 			print('Bus %d arrived at stop %d at %.3f' % 
 				(self.id_num, next_stop.id_num,self.simpy_env.now))
+
+		if(PLOTTING):
+			info = [self.id_num, stop.id_num, self.action_time, self.departure_time, load_at_arrival]
+			self.env.save_outputs.append(info)
+
+
 
 		return
 
@@ -329,6 +336,8 @@ class BusBunchingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 		self.done = False
 
+		self.save_outputs = []
+
 		self.stops = [ Stop(env=self, simpy_env=self.simpy_env, id_num=i,
 		 arrival_rate=self.stop_arrival_rates[i], alight_ratio=self.stop_alight_ratios[i],
 		 travel_time = self.stop_travel_times[i]) for i in range(self.n_stops)]
@@ -366,9 +375,14 @@ class BusBunchingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 		# Output Info
 		if(PLOTTING):
+
+			self.saveoutputs(self.save_outputs)
+			print('Outputs Saved!')
+
 			import matplotlib.pyplot as plt
 			outputs = []
 			# Plot arrival times
+			axs = []
 			for i in self.env_agents:
 				stops = [ o[0] for o in i.observations ]
 				loads = [ o[2] for o in i.observations ]
@@ -376,16 +390,34 @@ class BusBunchingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 				outputs.append( {'agent': i.id_num, 'stops': stops,
 				 'loads': loads, 'travel_times': travel_times}  )
 				
-				plt.plot(np.cumsum(travel_times).tolist(),stops, '*')
+				start_off = 4*self.n_stops
+				end_off = 6*self.n_stops
+				ax, = plt.plot(np.cumsum(travel_times).tolist()[start_off:end_off],
+					stops[start_off:end_off], '*')
+				axs.append(ax)
+
+			plt.xlabel('Time [min]')
+			plt.ylabel('Stop Index')
+			plt.legend(axs, [ 'Bus %d' % (i+1) for i in range(self.n_agents) ], loc='Best')
 			plt.grid()
 			plt.show()
 
+			axs = []
 			for i in self.env_agents:
 				stops = [ o[0] for o in i.observations ]
 				loads = [ o[2] for o in i.observations ]
 				travel_times = [ o[3]/60 for o in i.observations ]
+
+				start_off = 4*self.n_stops
+				end_off = 6*self.n_stops
 				
-				plt.plot(range(len(loads)), loads, '*-')
+				xx = list(range(len(loads)))
+				xx = [ (x%self.n_stops)+1 for x in xx]
+				ax, = plt.plot(xx[start_off:end_off], loads[start_off:end_off], '*-')
+				axs.append(ax)
+			plt.xlabel('Stop Index')
+			plt.ylabel('Load at Arrival')
+			plt.legend(axs, [ 'Bus %d' % (i+1) for i in range(self.n_agents) ], loc='Best')
 
 			plt.show()
 
@@ -395,6 +427,17 @@ class BusBunchingEnv(AbstractMAEnv, EzPickle, SimPyRollout):
 
 		
 		return observations, actions, rewards, agent_infos, env_infos, offset_t_sojourn
+
+	def saveoutputs(self, outputs):
+
+		import csv
+
+		with open('output.csv', 'w') as csvfile:
+			writer = csv.writer(csvfile, delimiter=',',
+								quotechar='"', quoting=csv.QUOTE_MINIMAL)
+			writer.writerow(['Bus', 'Stop', 'Arrival Time', 'Departure Time', 'Load'])
+			for i in range(self.n_agents):
+				[writer.writerow(o) for o in outputs if o[0] == i]
 
 
 	@property
@@ -476,13 +519,12 @@ from BusBunching.runners import RunnerParser
 from BusBunching.runners.rurllab import RLLabRunner
 import tensorflow as tf
 
-from BusBunching.test_policy import path_discounted_returns
+from BusBunching.test_policy import path_discounted_returns, optimization_obj_fun, optim_policy
 import pickle, joblib
 
-if __name__ == "__main__":
+def run():
 
-	run = True
-
+	print('RL Mode')
 
 	import datetime
 	import dateutil
@@ -497,24 +539,115 @@ if __name__ == "__main__":
 
 	args.exp_name = exp_name
 
-	if(run):
-
-		env =  BusBunchingEnv(num_agents = args.n_agents,
+	env =  BusBunchingEnv(num_agents = args.n_agents,
 		 num_stops = args.n_stops, gamma = args.discount, kwargs = args)
 		
-		run = RLLabRunner(env, args)
+	run = RLLabRunner(env, args)
+	run()
+
+def test():
+
+	print('Test Mode')
+
+	parser = RunnerParser(ENV_OPTIONS)
+	mode = parser._mode
+	args = parser.args
+
+	if(PLOTTING):
+		args.max_simtime = 6*60*60
+	env =  BusBunchingEnv(num_agents = args.n_agents,
+	 num_stops = args.n_stops, gamma = 0, kwargs = args)
+	with tf.Session() as sess:
+		obj = joblib.load('./data/experiment_2017_06_01_gae_2_with_featnet/itr_499.pkl')
+		policy = obj['policy']
+		# path_discounted_returns(env, 0, 30, policy=policy, simpy = True, printing = True)
+		path_discounted_returns(env, 0, 30, simpy = True, printing = True)
+
+
+def optimize_heuristic():
+
+	print('Optimization Mode')
+
+	parser = RunnerParser(ENV_OPTIONS)
+	mode = parser._mode
+	args = parser.args
+
+	env =  BusBunchingEnv(num_agents = args.n_agents,
+	 num_stops = args.n_stops, gamma = 0, kwargs = args)
+
+	ofun = lambda x: -optimization_obj_fun(env = env, gamma = 0, bounds = x)
+
+	from scipy.optimize import differential_evolution as optimizer
+
+	planned_headway = args.planned_headway
+
+	# res = optimizer(ofun, [(0, 3*planned_headway)]*3, disp = True)
+
+	# print(res)
+
+	# policy = optim_policy(res.x)
+	policy = optim_policy([ 340.28721132,  532.79107018,  262.62855417])
+
+	if(PLOTTING):
+		args.max_simtime = 6*60*60
+	env =  BusBunchingEnv(num_agents = args.n_agents,
+	 num_stops = args.n_stops, gamma = 0, kwargs = args)
+
+	path_discounted_returns(env, 0, 30, policy=policy, simpy = True, printing = True)
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+
+	mode = 'optim'
+	PLOTTING = False
+
+	if(mode == 'run'):
 		run()
 
-	else:
-		PLOTTING = True
-		args.max_simtime = 6*60*60
-		env =  BusBunchingEnv(num_agents = args.n_agents,
-		 num_stops = args.n_stops, gamma = args.discount, kwargs = args)
-		with tf.Session() as sess:
-			obj = joblib.load('./data/experiment_2017_05_29_19_18_07_556228_PDT_dt_-1.000/itr_299.pkl')
-			policy = obj['policy']
-			path_discounted_returns(env, args.discount, 30, policy=policy, simpy = True, printing = True)
-			# path_discounted_returns(env, args.discount, 30, simpy = True, printing = True)
+	elif(mode == 'test'):
+		test()
+
+	elif(mode == 'optim'):
+		optimize_heuristic()
+
+
+	# import datetime
+	# import dateutil
+
+	# parser = RunnerParser(ENV_OPTIONS)
+	# mode = parser._mode
+	# args = parser.args
+
+	# now = datetime.datetime.now(dateutil.tz.tzlocal())
+	# timestamp = now.strftime('%Y_%m_%d_%H_%M_%S_%f_%Z')
+	# exp_name = 'experiment_%s_dt_%.3f' % (timestamp, args.DT)
+
+	# args.exp_name = exp_name
+
+	# if(run):
+
+	# 	env =  BusBunchingEnv(num_agents = args.n_agents,
+	# 	 num_stops = args.n_stops, gamma = args.discount, kwargs = args)
+		
+	# 	run = RLLabRunner(env, args)
+	# 	run()
+
+	# else:
+	# 	PLOTTING = True
+	# 	args.max_simtime = 6*60*60
+	# 	env =  BusBunchingEnv(num_agents = args.n_agents,
+	# 	 num_stops = args.n_stops, gamma = args.discount, kwargs = args)
+	# 	with tf.Session() as sess:
+	# 		obj = joblib.load('./data/experiment_2017_05_30_gae_2/itr_499.pkl')
+	# 		policy = obj['policy']
+	# 		# path_discounted_returns(env, args.discount, 30, policy=policy, simpy = True, printing = True)
+	# 		path_discounted_returns(env, args.discount, 30, simpy = True, printing = True)
 
 
 		

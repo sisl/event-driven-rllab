@@ -67,7 +67,7 @@ if __name__ == '__main__':
 	plt.legend(axes, map(str,[0.003, 0.01,0.03,0.1,0.3]),loc='best')
 	plt.title(r'$\Delta T$ vs $N$ for various $\delta$')
 	plt.grid()
-	plt.savefig('NvsDT.png', bbox_inches='tight', dpi = 300)
+	# plt.savefig('NvsDT.png', bbox_inches='tight', dpi = 300)
 	plt.show()
 
 

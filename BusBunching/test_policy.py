@@ -27,15 +27,68 @@ class test_policy():
 		if self.mode == 'No-H':
 			return 0 # random.randint(0,3)
 		elif self.mode == 'T-H':
-			headway = obs[0]
+			headway = obs[1]
 			if headway < 0.8 * 6 * 60:
 				return 1
 			else:
 				return 0
+		else:
+			return random.randint(0,3)
+
+class optim_policy():
+
+	@property
+	def recurrent(self):
+		return False
+
+	def reset(self, dones = None):
+		return
+
+	def get_actions(self, olist):
+		actions = [self.get_action(o) for o in olist]
+		return actions, dict(probs = [0]*len(olist))
+
+	def __init__(self, bounds):
+		bounds = sorted(bounds, reverse = True)
+		self.bounds = bounds
+		return
+
+	def get_action(self, obs):
+		headway = obs[1]
+		action = 0
+		for i in range(1,4):
+			if headway < self.bounds[i-1]:
+				action = i
+		return action
+
+
+def optimization_obj_fun(env, gamma, bounds):
+
+	if(not isinstance(env,TfEnv)):
+		env = TfEnv(env)
+
+
+	policy = optim_policy(bounds)
+	paths = [ed_simpy_dec_rollout(env, policy)]
+	paths = [item for sublist in paths for item in sublist]
+
+	adr = []
+	for path in paths:
+		t_sojourn = path["offset_t_sojourn"]
+		discount_gamma = np.exp(-gamma*t_sojourn)
+		path_adr = variable_discount_cumsum(path["rewards"], discount_gamma)
+		avg_discounted_return = path_adr[0]
+		adr.append(avg_discounted_return)
+
+	return mean(adr)
 
 
 
-def path_discounted_returns(env, gamma, num_traj, simpy = False, policy = test_policy(mode='T-H'), printing = False):
+
+
+
+
+def path_discounted_returns(env, gamma, num_traj, simpy = False, policy = test_policy(mode='No-H'), printing = False):
 	# print('Env is of type ', type(env))
 	# print('Policy is of type ', type(policy))
 	if printing: print('Simulating %d Rollouts...' % (num_traj))
@@ -76,9 +129,8 @@ def path_discounted_returns(env, gamma, num_traj, simpy = False, policy = test_p
 
 	elapsed = time.time() - start_time
 	if printing: print('Time Elapsed %.2f, or %.7f +- %.7f per rollout' % (elapsed, mean(rollout_times), std(rollout_times) / np.sqrt(num_traj)))
-	if printing: print('MeanADR: %.3f, StdADR: %.3f' % (mean(adr),std(adr) / np.sqrt(num_traj) ))
+	if printing: print('MeanADR: %.5te, StdADR: %.3f' % (mean(adr),std(adr) / np.sqrt(num_traj) ))
 	return mean(adr), std(adr) / np.sqrt(num_traj), adr
-
 
 
 if __name__ == '__main__':

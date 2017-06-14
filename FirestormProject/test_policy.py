@@ -103,12 +103,61 @@ class test_smart_policy(test_policy):
 			else:
 				live_fires.pop(0)
 
-
-
-
 		else:
 			# pick a random action
 			return random.randint(0,5)
+
+
+class test_learned_policy_approximation(test_policy):
+
+	@property
+	def recurrent(self):
+		return False
+
+	def reset(self, dones = None):
+		return
+
+	def get_actions(self, olist):
+		actions = [self.get_action(o) for o in olist]
+		return actions, dict(probs = [0]*len(olist))
+
+	def __init__(self):
+		return
+
+	def get_action(self, obs):
+		if obs == [None]:
+			return None
+		# Extract meaningful observations
+		my_loc = obs[0:2]
+
+		fires = []
+		for i in range(5):
+			ind_off = 2 + i*5
+			dist = obs[ ind_off ]
+			reward, interest, status, secondsleft = tuple(obs[ind_off + 1 : ind_off + 5])
+			level = reward
+			f = {'dist': dist, 'rew': reward, 'intr': interest, 'status': status > 0.5, 'lvl': level, 'secondsleft': secondsleft}
+			fires.append(f)
+
+		at_a_live_fire = fires[0]['dist'] < 1e-7 and fires[0]['status'] > 0.5
+		
+		if(at_a_live_fire):
+			interested = fires[0]['intr'] > 1
+			if(interested):
+				if(np.random.uniform() < 0.26556016597510373):
+					return 5
+			else:
+				if(np.random.uniform() < 0.842391304347826):
+					return 5
+
+
+		
+		# choose random action
+		a = np.random.multinomial(1, [0.150705, 0.149548, 0.679966, 0.0169208, 0.00286071])824
+		return np.where(a)[0][0]
+
+
+
 
 
 
@@ -225,6 +274,8 @@ def collect_one_adr(env, policy, max_path_length):
 
 
 def parallel_path_discounted_returns(env, num_traj, policy = test_policy(), max_path_length = 50000, progbar = False):
+	if(not isinstance(env,TfEnv)):
+		env = TfEnv(env)
 	bar = progressbar.ProgressBar()
 	rng = bar(range(num_traj)) if progbar else range(num_traj)
 	return [ collect_one_adr(env, policy, max_path_length) for i in rng]

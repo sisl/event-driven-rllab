@@ -288,7 +288,7 @@ def main4():
 	show_new_uavsec = False
 
 	filenames = ['ckpt_-1.pkl', 'ckpt_0.1.pkl', 'ckpt_0.316.pkl', 'ckpt_1.pkl', 'ckpt_3.162.pkl', 'ckpt_10.pkl', 'ckpt_1.00_2.999uavsec.pkl']
-	filenames = ['./data/data/' + fn for fn in filenames]
+	filenames = ['./data_firestorm/data/' + fn for fn in filenames]
 
 	curve_means = []
 	curve_stds = []
@@ -342,6 +342,9 @@ def main4():
 	labels = ['ED', r'$10^{-1}$', r'$10^{-0.5}$', r'$10^{0}$', r'$10^{0.5}$', r'$10^{1}$']
 	plt.xticks([2.5,7.5,12.5,17.5,22.5,27.5], labels, rotation='vertical')
 
+	for i in range(len(total_means)):
+		print(total_means[i], total_stds[i])
+
 
 	for i in range(len(total_means)-1):
 		clr = 'm' if i == 0 else 'b'
@@ -382,7 +385,7 @@ def main4():
 	plt.title('Estimated Learned Policy Performance on ED Simulator')
 	plt.grid()
 	plt.tight_layout()
-	plt.savefig('PolicyPerformanceWithED.png', bbox_inches='tight', dpi = 300)
+	# plt.savefig('PolicyPerformanceWithED.png', bbox_inches='tight', dpi = 300)
 	plt.show()
 
 

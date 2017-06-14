@@ -1,0 +1,37 @@
+
+\begin{tikzpicture}[]
+\begin{axis}[xlabel = {Training Simulator}, grid=both, ylabel = {Average Discounted Return}, legend style = {{at={(0.05,0.15)},anchor=north west}},xtick={1,2,3,4,5,6}, xticklabels={ED, FS-$10^{-1.0}$, FS-$10^{-0.5}$, FS-$10^{0}$, FS-$10^{0.5}$, FS-$10^{1.0}$},xticklabel style={rotate=45} ]\addplot+ [
+, error bars/.cd,
+x dir=both, x explicit, y dir=both, y explicit]
+table [
+x error plus=ex+, x error minus=ex-, y error plus=ey+, y error minus=ey-
+] {
+x y ex+ ex- ey+ ey-
+4.0 1.93681589969 0.0 0.0 0.0410598352529 0.0410598352529
+};
+\addlegendentry{$T_{health} = 2.9999$}
+\addplot+ [
+, error bars/.cd,
+x dir=both, x explicit, y dir=both, y explicit]
+table [
+x error plus=ex+, x error minus=ex-, y error plus=ey+, y error minus=ey-
+] {
+x y ex+ ex- ey+ ey-
+1.0 2.77967987039 0.0 0.0 0.0136182751054 0.0136182751054
+};
+\addplot+ [
+only marks = {true}, error bars/.cd,
+x dir=both, x explicit, y dir=both, y explicit]
+table [
+x error plus=ex+, x error minus=ex-, y error plus=ey+, y error minus=ey-
+] {
+x y ex+ ex- ey+ ey-
+2.0 2.77116278061 0.0 0.0 0.0179833271993 0.0179833271993
+3.0 2.74452130859 0.0 0.0 0.0153417433698 0.0153417433698
+4.0 2.78854871988 0.0 0.0 0.00882454950388 0.00882454950388
+5.0 2.21184437795 0.0 0.0 0.0820432066556 0.0820432066556
+6.0 1.8413277904 0.0 0.0 0.179313897733 0.179313897733
+};
+\end{axis}
+
+\end{tikzpicture}

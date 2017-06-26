@@ -7,12 +7,15 @@ from rllab.policies.gaussian_mlp_policy import GaussianMLPPolicy
 
 
 def run_task(*_):
+    # Please note that different environments with different action spaces may require different
+    # policies. For example with a Box action space, a GaussianMLPPolicy works, but for a Discrete
+    # action space may need to use a CategoricalMLPPolicy (see the trpo_gym_cartpole.py example)
     env = normalize(GymEnv("Pendulum-v0"))
 
     policy = GaussianMLPPolicy(
         env_spec=env.spec,
         # The neural network policy should have two hidden layers, each with 32 hidden units.
-        hidden_sizes=(8, 8)
+        hidden_sizes=(32, 32)
     )
 
     baseline = LinearFeatureBaseline(env_spec=env.spec)

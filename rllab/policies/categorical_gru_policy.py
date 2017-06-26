@@ -15,7 +15,7 @@ from rllab.misc.overrides import overrides
 from rllab.policies.base import StochasticPolicy
 
 
-class CategoricalGRUPolicy(StochasticPolicy, LasagnePowered):
+class CategoricalGRUPolicy(StochasticPolicy, LasagnePowered, Serializable):
     def __init__(
             self,
             env_spec,

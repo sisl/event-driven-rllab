@@ -1,3 +1,6 @@
+
+
+
 from sandbox.rocky.tf.algos.trpo import TRPO
 from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
 from rllab.envs.box2d.cartpole_env import CartpoleEnv
@@ -7,6 +10,8 @@ from sandbox.rocky.tf.optimizers.conjugate_gradient_optimizer import FiniteDiffe
 from sandbox.rocky.tf.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.misc.instrument import stub, run_experiment_lite
+
+stub(globals())
 
 env = TfEnv(normalize(CartpoleEnv()))
 
@@ -31,4 +36,8 @@ algo = TRPO(
     # optimizer=ConjugateGradientOptimizer(hvp_approach=FiniteDifferenceHvp(base_eps=1e-5))
 
 )
-algo.train()
+run_experiment_lite(
+    algo.train(),
+    n_parallel=4,
+    seed=1,
+)

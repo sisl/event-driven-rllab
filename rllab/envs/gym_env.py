@@ -83,10 +83,8 @@ class GymEnv(Env, Serializable):
             self.monitoring = True
 
         self._observation_space = convert_gym_space(env.observation_space)
-        logger.log("observation space: {}".format(self._observation_space))
         self._action_space = convert_gym_space(env.action_space)
-        logger.log("action space: {}".format(self._action_space))
-        self._horizon = env.spec.tags['wrapper_config.TimeLimit.max_episode_steps']
+        self._horizon = env.spec.timestep_limit
         self._log_dir = log_dir
         self._force_reset = force_reset
 
@@ -104,8 +102,8 @@ class GymEnv(Env, Serializable):
 
     def reset(self):
         if self._force_reset and self.monitoring:
-            from gym.wrappers.monitoring import Monitor
-            assert isinstance(self.env, Monitor)
+            from gym.wrappers.monitoring import _Monitor
+            assert isinstance(self.env, _Monitor)
             recorder = self.env.stats_recorder
             if recorder is not None:
                 recorder.done = True

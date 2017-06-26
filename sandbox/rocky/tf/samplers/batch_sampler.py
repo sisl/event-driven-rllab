@@ -10,7 +10,7 @@ def worker_init_tf(G):
 
 
 def worker_init_tf_vars(G):
-    G.sess.run(tf.global_variables_initializer())
+    G.sess.run(tf.initialize_all_variables())
 
 
 class BatchSampler(BaseSampler):
@@ -26,7 +26,10 @@ class BatchSampler(BaseSampler):
 
     def obtain_samples(self, itr):
         cur_policy_params = self.algo.policy.get_param_values()
-        cur_env_params = self.algo.env.get_param_values()
+        if hasattr(self.algo.env,"get_param_values"):
+            cur_env_params = self.algo.env.get_param_values()
+        else:
+            cur_env_params = None
         paths = parallel_sampler.sample_paths(
             policy_params=cur_policy_params,
             env_params=cur_env_params,

@@ -12,7 +12,7 @@ def suppress_params_loading():
     yield
     load_params = True
 
-class Parameterized(Serializable):
+class Parameterized(object):
 
     def __init__(self):
         self._cached_params = {}

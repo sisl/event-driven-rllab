@@ -32,7 +32,7 @@ class PerlmutterHvp(object):
         def Hx_plain():
             Hx_plain_splits = tf.gradients(
                 tf.reduce_sum(
-                    tf.stack([tf.reduce_sum(g * x) for g, x in zip(constraint_grads, xs)])
+                    tf.pack([tf.reduce_sum(g * x) for g, x in zip(constraint_grads, xs)])
                 ),
                 params
             )

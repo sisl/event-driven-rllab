@@ -129,7 +129,7 @@ def path_discounted_returns(env, gamma, num_traj, simpy = False, policy = test_p
 
 	elapsed = time.time() - start_time
 	if printing: print('Time Elapsed %.2f, or %.7f +- %.7f per rollout' % (elapsed, mean(rollout_times), std(rollout_times) / np.sqrt(num_traj)))
-	if printing: print('MeanADR: %.5te, StdADR: %.3f' % (mean(adr),std(adr) / np.sqrt(num_traj) ))
+	if printing: print('MeanADR: %.5e, StdADR: %.3f' % (mean(adr),std(adr) / np.sqrt(num_traj) ))
 	return mean(adr), std(adr) / np.sqrt(num_traj), adr
 
 

@@ -26,7 +26,7 @@ optim_mean = -1.35403e+06;
 legs = ["BS-12000", "BS-1200", "BS-120", "BS-12", "BS", "Optimized Thresholds", "No Holding"]
 
 ax = PGFPlots.Axis(style="grid=both",
-  xlabel="Training Epoch", ylabel="Average Return", legendStyle = "{at={(0.55,0.6)},anchor=north west}");
+  xlabel="Training Epoch", ylabel="Average Return", legendStyle = "{at={(0.55,0.45)},anchor=north west}");
 
 # define_color("linecol", [0.3,0.3,0.3])
 # define_color("C1", [0,    0.4470,    0.7410])
